@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.5.0] - 2026-05-02
+
+## Highlights
+
+**Observation pipeline cleanup — kill the per-message retry counter.** The AI's parseable response is the only success signal; any other response (unparseable, empty, transport error) is a no-op. No more silent data loss after 3 retries.
+
+## What changed
+
+- **Parser:** collapsed to binary `{ valid: true, observations, summary } | { valid: false }`. No more `kind`/`skipped` enum dispatch in callers.
+- **ResponseProcessor:** two branches only — parseable → store + clear pending → broadcast; not parseable → reset claimed-but-unprocessed messages to pending. Removed per-message FIFO popping and the summarize-special-case best-effort confirm.
+- **PendingMessageStore:** 226 → 165 lines. Removed `markFailed` (the retry counter that silently dropped data after 3 attempts), `transitionMessagesTo`, `confirmProcessed`, `clearFailedOlderThan`, plus four other dead methods.
+- **Provider cleanup:** removed `processingMessageIds` tracking from Claude, Gemini, OpenRouter providers. The session-scoped clear handles the success path; no per-message in-flight tracking needed.
+- **GeneratorExitHandler:** drain-in-flight loop deleted; hard-stop / restart-guard paths now just clear pending for the session.
+- **Schema migration v31 + v32:** dropped four dead columns from `pending_messages` — `retry_count`, `failed_at_epoch`, `completed_at_epoch`, `worker_pid`. Status enum reduced to `'pending' | 'processing'` (the unreachable `'processed'` and `'failed'` are gone).
+
+## Bug fixes / polish
+
+- **`SessionQueueProcessor`:** removed two arbitrary 1-second recovery sleeps after error in `claimNextMessage`/`waitForMessage`; let the iterator end cleanly so `GeneratorExitHandler` can restart it.
+- **`Server.ts` + `SettingsRoutes.ts`:** unified four magic-number `setTimeout` exit-flush patterns (100ms × 2, 1000ms × 2) into one `flushResponseThen` helper using `res.on('finish', ...)`.
+- **PR review feedback (21+ threads):** install.ts argument fixes, settings cache TTL, Dockerfile login-banner sourcing, docs port-model + Node version updates, regex whitespace fix, Date.UTC for year-mismatch test, sync-marketplace port range guard, banner inflate fail-open, version-bump arg validation.
+
+## Net diff
+
+`-181 lines` (worker-service.cjs unaffected; total source lines down).
+
+## Migration
+
+Existing databases auto-migrate on worker startup (schema v31 + v32 drop the dead columns). No user action needed.
+
 ## [12.4.9] - 2026-04-30
 
 Patches in 7 critical fixes from PR #2219 (integration/critical-fixes-april):
