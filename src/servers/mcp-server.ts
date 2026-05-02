@@ -1,21 +1,9 @@
-/**
- * Claude-mem MCP Search Server - Thin HTTP Wrapper
- *
- * Refactored from 2,718 lines to ~600-800 lines
- * Delegates all business logic to Worker HTTP API at localhost:37777
- * Maintains MCP protocol handling and tool schemas
- */
 
-// Version injected at build time by esbuild define
 declare const __DEFAULT_PACKAGE_VERSION__: string;
 const packageVersion = typeof __DEFAULT_PACKAGE_VERSION__ !== 'undefined' ? __DEFAULT_PACKAGE_VERSION__ : '0.0.0-dev';
 
-// Import logger first
 import { logger } from '../utils/logger.js';
 
-// CRITICAL: Redirect console to stderr BEFORE other imports
-// MCP uses stdio transport where stdout is reserved for JSON-RPC protocol messages.
-// Any logs to stdout break the protocol (Claude Desktop parses "[2025..." as JSON array).
 console['log'] = (...args: any[]) => {
   logger.error('CONSOLE', 'Intercepted console output (MCP protocol protection)', undefined, { args });
 };
@@ -36,52 +24,19 @@ import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-// Resolve the path to worker-service.cjs, which lives alongside mcp-server.cjs
-// in the plugin's scripts directory. We need an explicit path because the MCP
-// server runs under Node while the worker must run under Bun, so we can't rely
-// on `__filename` pointing to a self-spawnable script.
-//
-// In the deployed CJS bundle, `__dirname` is always defined — the import.meta
-// fallback only exists to keep the source future-proof against an eventual
-// ESM port. Both fallback branches should be functionally unreachable today.
 let mcpServerDirResolutionFailed = false;
 const mcpServerDir = (() => {
   if (typeof __dirname !== 'undefined') return __dirname;
   try {
     return dirname(fileURLToPath(import.meta.url));
   } catch {
-    // Last-ditch fallback: cwd is almost certainly wrong, but throwing here
-    // would crash the MCP server before it can serve a single request. Mark
-    // the failure so the existence check below can produce a single, loud,
-    // root-cause-attributing log line instead of a confusing "missing worker
-    // bundle" warning that hides the dirname resolution failure.
     mcpServerDirResolutionFailed = true;
     return process.cwd();
   }
 })();
 const WORKER_SCRIPT_PATH = resolve(mcpServerDir, 'worker-service.cjs');
 
-/**
- * Surface a clear, actionable error if the worker bundle isn't where we
- * expect. Without this check, a missing or partial install only fails later
- * inside spawnDaemon as a generic "failed to spawn" message.
- *
- * If dirname resolution itself failed (extremely unlikely in CJS), attribute
- * the missing-bundle warning to the root cause so the user doesn't waste time
- * looking for an install bug that doesn't exist.
- *
- * Called lazily from `ensureWorkerConnection` (not at module load) so that
- * tests or tools that import this module without booting the MCP server
- * don't see noisy ERROR-level log lines for a worker they never intended
- * to start. The check is cheap and idempotent, so calling it on every
- * auto-start attempt is fine.
- */
 function errorIfWorkerScriptMissing(): void {
-  // Only log here when the dirname resolution itself failed — that's the
-  // mcp-server-specific root cause attribution that the spawner cannot
-  // provide. The plain "missing bundle" case is already covered by the
-  // existsSync guard inside ensureWorkerStarted, and logging from both
-  // sites would produce a confusing double-log on the same code path.
   if (!mcpServerDirResolutionFailed) return;
   if (existsSync(WORKER_SCRIPT_PATH)) return;
 
@@ -92,17 +47,11 @@ function errorIfWorkerScriptMissing(): void {
   );
 }
 
-/**
- * Map tool names to Worker HTTP endpoints
- */
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   'search': '/api/search',
   'timeline': '/api/timeline'
 };
 
-/**
- * Call Worker HTTP API endpoint (uses socket or TCP automatically)
- */
 async function callWorkerAPI(
   endpoint: string,
   params: Record<string, any>
@@ -111,7 +60,6 @@ async function callWorkerAPI(
 
   const searchParams = new URLSearchParams();
 
-  // Convert params to query string
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {
       searchParams.append(key, String(value));
@@ -132,7 +80,6 @@ async function callWorkerAPI(
 
     logger.debug('SYSTEM', '← Worker API success', undefined, { endpoint });
 
-    // Worker returns { content: [...] } format directly
     return data;
   } catch (error: unknown) {
     logger.error('SYSTEM', '← Worker API error', { endpoint }, error instanceof Error ? error : new Error(String(error)));
@@ -173,9 +120,6 @@ async function executeWorkerPostRequest(
   };
 }
 
-/**
- * Call Worker HTTP API with POST body
- */
 async function callWorkerAPIPost(
   endpoint: string,
   body: Record<string, any>
@@ -196,24 +140,16 @@ async function callWorkerAPIPost(
   }
 }
 
-/**
- * Verify Worker is accessible
- */
 async function verifyWorkerConnection(): Promise<boolean> {
   try {
     const response = await workerHttpRequest('/api/health');
     return response.ok;
   } catch (error: unknown) {
-    // Expected during worker startup or if worker is down
     logger.debug('SYSTEM', 'Worker health check failed', {}, error instanceof Error ? error : new Error(String(error)));
     return false;
   }
 }
 
-/**
- * Ensure Worker is available for Codex and other MCP-only clients.
- * Claude hooks already start the worker; this path makes Codex turnkey.
- */
 async function ensureWorkerConnection(): Promise<boolean> {
   if (await verifyWorkerConnection()) {
     return true;
@@ -221,22 +157,18 @@ async function ensureWorkerConnection(): Promise<boolean> {
 
   logger.warn('SYSTEM', 'Worker not available, attempting auto-start for MCP client');
 
-  // Validate the worker bundle path lazily here (rather than at module load)
-  // so that tests/tools that import this module without booting the MCP
-  // server don't see noisy ERROR-level log lines for a worker they never
-  // intended to start.
   errorIfWorkerScriptMissing();
 
   try {
     const port = getWorkerPort();
-    const started = await ensureWorkerStarted(port, WORKER_SCRIPT_PATH);
-    if (!started) {
+    const result = await ensureWorkerStarted(port, WORKER_SCRIPT_PATH);
+    if (result === 'dead') {
       logger.error(
         'SYSTEM',
-        'Worker auto-start returned false — MCP tools that require the worker (search, timeline, get_observations) will fail until the worker is running. Check earlier log lines for the specific failure reason (Bun not found, missing worker bundle, port conflict, etc.).'
+        'Worker auto-start failed — MCP tools that require the worker (search, timeline, get_observations) will fail until the worker is running. Check earlier log lines for the specific failure reason (Bun not found, missing worker bundle, port conflict, etc.).'
       );
     }
-    return started;
+    return result !== 'dead';
   } catch (error: unknown) {
     logger.error(
       'SYSTEM',
@@ -248,10 +180,6 @@ async function ensureWorkerConnection(): Promise<boolean> {
   }
 }
 
-/**
- * Tool definitions with HTTP-based handlers
- * Minimal descriptions - use help() tool with operation parameter for detailed docs
- */
 const tools = [
   {
     name: '__IMPORTANT',
@@ -411,7 +339,6 @@ NEVER fetch full details without filtering first. 10x token savings.`,
           content: [{ type: 'text' as const, text: unfolded }]
         };
       }
-      // Symbol not found — show available symbols
       const parsed = parseFile(content, filePath);
       if (parsed.symbols.length > 0) {
         const available = parsed.symbols.map(s => `  - ${s.name} (${s.kind})`).join('\n');
@@ -567,7 +494,6 @@ NEVER fetch full details without filtering first. 10x token savings.`,
   }
 ];
 
-// Create the MCP server
 const server = new Server(
   {
     name: 'claude-mem',
@@ -580,7 +506,6 @@ const server = new Server(
   }
 );
 
-// Register tools/list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: tools.map(tool => ({
@@ -591,7 +516,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Register tools/call handler
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const tool = tools.find(t => t.name === request.params.name);
 
@@ -613,8 +537,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Parent heartbeat: self-exit when parent dies (ppid=1 on Unix means orphaned)
-// Prevents orphaned MCP server processes when Claude Code exits unexpectedly
 const HEARTBEAT_INTERVAL_MS = 30_000;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let isCleaningUp = false;
@@ -643,7 +565,6 @@ function detachStdioLifecycle() {
 }
 
 function startParentHeartbeat() {
-  // ppid-based orphan detection only works on Unix
   if (process.platform === 'win32') return;
 
   const initialPpid = process.ppid;
@@ -657,12 +578,9 @@ function startParentHeartbeat() {
     }
   }, HEARTBEAT_INTERVAL_MS);
 
-  // Don't let the heartbeat timer keep the process alive
   if (heartbeatTimer.unref) heartbeatTimer.unref();
 }
 
-// Cleanup function — synchronous to ensure consistent behavior whether called
-// from signal handlers, heartbeat interval, or awaited in async context
 function cleanup(reason: string = 'shutdown') {
   if (isCleaningUp) return;
   isCleaningUp = true;
@@ -673,28 +591,11 @@ function cleanup(reason: string = 'shutdown') {
   process.exit(0);
 }
 
-// Register cleanup handlers for graceful shutdown
 process.on('SIGTERM', cleanup);
 process.on('SIGINT', cleanup);
 
-/**
- * Issue #2174: When the IDE extension (e.g. Cursor's Claude Code) loses its
- * marketplace directory at ~/.claude/plugins/marketplaces/<source>/, the
- * extension's hook loader silently skips claude-mem hooks while the MCP
- * server (this process) keeps working. The session becomes invisible to
- * memory with no error surfaced.
- *
- * The MCP server is the one piece that DOES boot in this state, so we use
- * it as the canary: detect the missing marketplace dir and emit a single
- * loud, actionable warning. We don't run smart-install.js from here — the
- * MCP server runs under the IDE's permission model, not the user's shell,
- * so attempting an install at MCP startup creates more failure modes than
- * it fixes. Instead we tell the user exactly what to do.
- */
 function checkMarketplaceMarker(): void {
   try {
-    // Use os.homedir() so this works on Windows (HOME is unset there;
-    // USERPROFILE is the Windows convention and homedir() picks it up).
     const home = homedir();
     const marketplaceCandidates = [
       resolve(home, '.claude', 'plugins', 'marketplaces', 'thedotmack'),
@@ -716,25 +617,19 @@ function checkMarketplaceMarker(): void {
       );
     }
   } catch {
-    // Self-heal probe is best-effort; never fail MCP startup for it.
   }
 }
 
-// Start the server
 async function main() {
-  // Start the MCP server
   const transport = new StdioServerTransport();
   attachStdioLifecycle();
   await server.connect(transport);
   logger.info('SYSTEM', 'Claude-mem search server started');
 
-  // Surface marketplace-dir corruption that silently disables hook loading
   checkMarketplaceMarker();
 
-  // Start parent heartbeat to detect orphaned MCP servers
   startParentHeartbeat();
 
-  // Check Worker availability in background
   setTimeout(async () => {
     const workerAvailable = await ensureWorkerConnection();
     if (!workerAvailable) {
@@ -749,7 +644,5 @@ async function main() {
 
 main().catch((error) => {
   logger.error('SYSTEM', 'Fatal error', undefined, error);
-  // Exit gracefully: Windows Terminal won't keep tab open on exit 0
-  // The wrapper/plugin will handle restart logic if needed
   process.exit(0);
 });

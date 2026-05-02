@@ -1,8 +1,3 @@
-/**
- * ObservationCompiler - Query building and data retrieval for context
- *
- * Handles database queries for observations and summaries, plus transcript extraction.
- */
 
 import path from 'path';
 import { existsSync, readFileSync } from 'fs';
@@ -20,9 +15,6 @@ import type {
 } from './types.js';
 import { SUMMARY_LOOKAHEAD } from './types.js';
 
-/**
- * Query observations from database with type and concept filtering
- */
 export function queryObservations(
   db: SessionStore,
   project: string,
@@ -68,9 +60,6 @@ export function queryObservations(
   ) as Observation[];
 }
 
-/**
- * Query recent session summaries from database
- */
 export function querySummaries(
   db: SessionStore,
   project: string,
@@ -96,12 +85,6 @@ export function querySummaries(
   `).all(project, project, config.sessionCount + SUMMARY_LOOKAHEAD) as SessionSummary[];
 }
 
-/**
- * Query observations from multiple projects (for worktree support)
- *
- * Returns observations from all specified projects, interleaved chronologically.
- * Used when running in a worktree to show both parent repo and worktree observations.
- */
 export function queryObservationsMulti(
   db: SessionStore,
   projects: string[],
@@ -112,7 +95,6 @@ export function queryObservationsMulti(
   const conceptArray = Array.from(config.observationConcepts);
   const conceptPlaceholders = conceptArray.map(() => '?').join(',');
 
-  // Build IN clause for projects
   const projectPlaceholders = projects.map(() => '?').join(',');
 
   return db.db.prepare(`
@@ -152,18 +134,22 @@ export function queryObservationsMulti(
   ) as Observation[];
 }
 
-/**
- * Query session summaries from multiple projects (for worktree support)
- *
- * Returns summaries from all specified projects, interleaved chronologically.
- * Used when running in a worktree to show both parent repo and worktree summaries.
- */
+export function countObservationsByProjects(db: SessionStore, projects: string[]): number {
+  if (projects.length === 0) return 0;
+  const projectPlaceholders = projects.map(() => '?').join(',');
+  const row = db.db.prepare(`
+    SELECT COUNT(*) as count FROM observations
+    WHERE project IN (${projectPlaceholders})
+       OR merged_into_project IN (${projectPlaceholders})
+  `).get(...projects, ...projects) as { count: number } | undefined;
+  return row?.count ?? 0;
+}
+
 export function querySummariesMulti(
   db: SessionStore,
   projects: string[],
   config: ContextConfig
 ): SessionSummary[] {
-  // Build IN clause for projects
   const projectPlaceholders = projects.map(() => '?').join(',');
 
   return db.db.prepare(`
@@ -188,16 +174,10 @@ export function querySummariesMulti(
   `).all(...projects, ...projects, config.sessionCount + SUMMARY_LOOKAHEAD) as SessionSummary[];
 }
 
-/**
- * Convert cwd path to dashed format for transcript lookup
- */
 function cwdToDashed(cwd: string): string {
   return cwd.replace(/\//g, '-');
 }
 
-/**
- * Find the last assistant message text from parsed transcript lines.
- */
 function parseAssistantTextFromLine(line: string): string | null {
   if (!line.includes('"type":"assistant"')) return null;
 
@@ -230,9 +210,6 @@ function findLastAssistantMessage(lines: string[]): string {
   return '';
 }
 
-/**
- * Extract prior messages from transcript file
- */
 export function extractPriorMessages(transcriptPath: string): PriorMessages {
   try {
     if (!existsSync(transcriptPath)) return { userMessage: '', assistantMessage: '' };
@@ -252,9 +229,6 @@ export function extractPriorMessages(transcriptPath: string): PriorMessages {
   }
 }
 
-/**
- * Get prior session messages if enabled
- */
 export function getPriorSessionMessages(
   observations: Observation[],
   config: ContextConfig,
@@ -272,14 +246,10 @@ export function getPriorSessionMessages(
 
   const priorSessionId = priorSessionObs.memory_session_id;
   const dashedCwd = cwdToDashed(cwd);
-  // Use CLAUDE_CONFIG_DIR to support custom Claude config directories
   const transcriptPath = path.join(CLAUDE_CONFIG_DIR, 'projects', dashedCwd, `${priorSessionId}.jsonl`);
   return extractPriorMessages(transcriptPath);
 }
 
-/**
- * Prepare summaries for timeline display
- */
 export function prepareSummariesForTimeline(
   displaySummaries: SessionSummary[],
   allSummaries: SessionSummary[]
@@ -297,9 +267,6 @@ export function prepareSummariesForTimeline(
   });
 }
 
-/**
- * Build unified timeline from observations and summaries
- */
 export function buildTimeline(
   observations: Observation[],
   summaries: SummaryTimelineItem[]
@@ -309,7 +276,6 @@ export function buildTimeline(
     ...summaries.map(summary => ({ type: 'summary' as const, data: summary }))
   ];
 
-  // Sort chronologically
   timeline.sort((a, b) => {
     const aEpoch = a.type === 'observation' ? a.data.created_at_epoch : a.data.displayEpoch;
     const bEpoch = b.type === 'observation' ? b.data.created_at_epoch : b.data.displayEpoch;
@@ -319,9 +285,6 @@ export function buildTimeline(
   return timeline;
 }
 
-/**
- * Get set of observation IDs that should show full details
- */
 export function getFullObservationIds(observations: Observation[], count: number): Set<number> {
   return new Set(
     observations
