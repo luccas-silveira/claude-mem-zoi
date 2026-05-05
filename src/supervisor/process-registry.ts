@@ -482,6 +482,7 @@ export async function waitForSlot(maxConcurrent: number): Promise<void> {
       const removed = getProcessRegistry().pruneDeadEntries();
       if (removed > 0) {
         logger.info('PROCESS', 'Pruned stale process registry entries while waiting for agent slot', { removed });
+        return;
       }
       notifySlotAvailable();
     }, SLOT_RECHECK_INTERVAL_MS);

@@ -591,10 +591,16 @@ type ClaudeApiMode = 'direct' | 'gateway';
 async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   const initialProvider = (getSetting('CLAUDE_MEM_PROVIDER') as ProviderId) || 'claude';
 
-  const persistClaudeProvider = (authMethod: 'subscription' | 'api-key' | 'gateway' = 'subscription') => {
+  const persistClaudeProvider = (authMethod?: 'subscription' | 'api-key' | 'gateway') => {
+    const existingAuthMethod = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD') as
+      | 'subscription'
+      | 'api-key'
+      | 'gateway'
+      | undefined;
+    const resolvedAuthMethod = authMethod ?? existingAuthMethod ?? 'subscription';
     const wrote = mergeSettings({
       CLAUDE_MEM_PROVIDER: 'claude',
-      CLAUDE_MEM_CLAUDE_AUTH_METHOD: authMethod,
+      CLAUDE_MEM_CLAUDE_AUTH_METHOD: resolvedAuthMethod,
     });
     if (wrote) log.info('Saved Claude Agent SDK configuration to ~/.claude-mem/settings.json');
   };
