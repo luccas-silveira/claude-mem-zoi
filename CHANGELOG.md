@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.6.5] - 2026-05-05
+
+### Added
+- Installer now keeps the Claude Agent SDK as the single memory-agent path while supporting subscription auth, direct Anthropic API keys, and LiteLLM/custom gateway setup.
+- Added gateway env support for `ANTHROPIC_AUTH_TOKEN` alongside `ANTHROPIC_BASE_URL`.
+
+### Fixed
+- Removed the fixed agent-pool slot timeout so queued memory-agent work waits for process availability instead of dropping pending messages under load.
+- Reset generator failures back to pending messages instead of clearing queued work.
+
 ## [12.6.2] - 2026-05-05
 
 ## Fix: `npx claude-mem@latest install` no longer hangs on tree-sitter-swift
