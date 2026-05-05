@@ -588,16 +588,26 @@ type ProviderId = 'claude' | 'gemini' | 'openrouter';
 type ClaudeAccessMode = 'subscription' | 'api-key';
 type ClaudeApiMode = 'direct' | 'gateway';
 
+function resolveClaudeAuthMethod(): 'subscription' | 'api-key' | 'gateway' {
+  const stored = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD') as
+    | 'subscription'
+    | 'api-key'
+    | 'gateway'
+    | undefined;
+  if (stored === 'subscription' || stored === 'api-key' || stored === 'gateway') {
+    return stored;
+  }
+  const env = loadClaudeMemEnv();
+  if (env.ANTHROPIC_BASE_URL?.trim()) return 'gateway';
+  if (env.ANTHROPIC_API_KEY?.trim()) return 'api-key';
+  return 'subscription';
+}
+
 async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   const initialProvider = (getSetting('CLAUDE_MEM_PROVIDER') as ProviderId) || 'claude';
 
   const persistClaudeProvider = (authMethod?: 'subscription' | 'api-key' | 'gateway') => {
-    const existingAuthMethod = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD') as
-      | 'subscription'
-      | 'api-key'
-      | 'gateway'
-      | undefined;
-    const resolvedAuthMethod = authMethod ?? existingAuthMethod ?? 'subscription';
+    const resolvedAuthMethod = authMethod ?? resolveClaudeAuthMethod();
     const wrote = mergeSettings({
       CLAUDE_MEM_PROVIDER: 'claude',
       CLAUDE_MEM_CLAUDE_AUTH_METHOD: resolvedAuthMethod,
@@ -618,13 +628,27 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   const configureDirectApiKey = async (): Promise<void> => {
     const existing = loadClaudeMemEnv().ANTHROPIC_API_KEY || '';
     if (existing.trim().length > 0) {
-      saveClaudeMemEnv({
-        ANTHROPIC_API_KEY: existing.trim(),
-        ANTHROPIC_BASE_URL: '',
-        ANTHROPIC_AUTH_TOKEN: '',
+      const choice = await p.select<'keep' | 'replace'>({
+        message: 'An Anthropic API key is already configured. Keep it or enter a new one?',
+        options: [
+          { value: 'keep', label: 'Keep existing key' },
+          { value: 'replace', label: 'Enter a new key (rotate)' },
+        ],
+        initialValue: 'keep',
       });
-      persistClaudeProvider('api-key');
-      return;
+      if (p.isCancel(choice)) {
+        log.warn('API key prompt cancelled — leaving existing configuration untouched.');
+        return;
+      }
+      if (choice === 'keep') {
+        saveClaudeMemEnv({
+          ANTHROPIC_API_KEY: existing.trim(),
+          ANTHROPIC_BASE_URL: '',
+          ANTHROPIC_AUTH_TOKEN: '',
+        });
+        persistClaudeProvider('api-key');
+        return;
+      }
     }
 
     const apiKeyResult = await p.password({
@@ -708,14 +732,9 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   }
 
   const runClaudeAuthFlow = async (): Promise<void> => {
-    const storedAuthMethod = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD') as
-      | 'subscription'
-      | 'api-key'
-      | 'gateway'
-      | undefined;
-    const initialAccessMode: ClaudeAccessMode = storedAuthMethod === 'subscription' || !storedAuthMethod
-      ? 'subscription'
-      : 'api-key';
+    const resolvedAuthMethod = resolveClaudeAuthMethod();
+    const initialAccessMode: ClaudeAccessMode =
+      resolvedAuthMethod === 'subscription' ? 'subscription' : 'api-key';
 
     const result = await p.select<ClaudeAccessMode>({
       message: 'Do you use a subscription plan or an API key/gateway for the memory agent?',
@@ -741,7 +760,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         { value: 'direct', label: 'Anthropic API key' },
         { value: 'gateway', label: 'LiteLLM or custom gateway' },
       ],
-      initialValue: storedAuthMethod === 'gateway' || loadClaudeMemEnv().ANTHROPIC_BASE_URL ? 'gateway' : 'direct',
+      initialValue: resolvedAuthMethod === 'gateway' || loadClaudeMemEnv().ANTHROPIC_BASE_URL ? 'gateway' : 'direct',
     });
 
     if (p.isCancel(apiModeResult)) {
@@ -822,8 +841,7 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
     'claude-sonnet-4-6',
     'claude-opus-4-7',
   ]);
-  const authMethod = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD');
-  const allowCustomModel = authMethod === 'gateway';
+  const allowCustomModel = resolveClaudeAuthMethod() === 'gateway';
 
   if (options.model && !allowCustomModel) {
     if (!allowed.has(options.model)) {

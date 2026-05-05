@@ -13,6 +13,10 @@ export const ENV_FILE_PATH = paths.envFile();
 
 const BLOCKED_ENV_VARS = [
   'ANTHROPIC_API_KEY',       // Issue #733: Prevent auto-discovery from project .env files
+  'ANTHROPIC_AUTH_TOKEN',    // Same leak risk as ANTHROPIC_API_KEY; a token inherited from the
+                             // shell would otherwise short-circuit OAuth lookup at spawn time.
+                             // The fresh token from ~/.claude-mem/.env is re-injected below
+                             // when explicit gateway credentials are configured.
   'CLAUDECODE',              // Prevent "cannot be launched inside another Claude Code session" error
   'CLAUDE_CODE_OAUTH_TOKEN', // Issue #2215: prevent stale parent-process token from leaking into
                              // isolated env. The fresh token is read from the keychain at spawn
