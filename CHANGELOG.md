@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.6.2] - 2026-05-05
+
+## Fix: `npx claude-mem@latest install` no longer hangs on tree-sitter-swift
+
+### What broke in 12.6.1
+
+PR #2300 moved 21 tree-sitter grammar packages from root `devDependencies` → root `dependencies`. As a result, `npx claude-mem@12.6.1 install` started fetching all 21 grammars at npx time. `tree-sitter-swift`'s postinstall pulled a nested `tree-sitter-cli` that downloads a Rust binary from GitHub and SIGINT'd the install:
+
+```
+npm error path .../node_modules/claude-mem/node_modules/tree-sitter-swift/node_modules/tree-sitter-cli
+npm error command failed
+npm error signal SIGINT
+npm error Downloading https://github.com/tree-sitter/tree-sitter/releases/download/v0.23.2/tree-sitter-macos-arm64.gz
+```
+
+npm doesn't honor the bun-only `trustedDependencies` allowlist, so postinstalls always run on a bare `npx` fetch.
+
+### Fix (PR #2305)
+
+Move the 21 grammar packages back to root `devDependencies`. The marketplace plugin install path is untouched — `plugin/package.json` keeps them as runtime deps and `bun install` (in `installPluginDependencies`) honors `trustedDependencies: ["tree-sitter-cli"]` to skip the harmful postinstalls on every other grammar. Smart-search/smart-outline/smart-unfold continue to work end-to-end.
+
+PR #2300's `--legacy-peer-deps` and `--omit=dev` install.ts changes are kept — they fix a separate, valid marketplace ERESOLVE.
+
 ## [12.6.1] - 2026-05-05
 
 ## Patch release
