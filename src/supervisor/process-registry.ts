@@ -586,7 +586,6 @@ export function spawnSdkProcess(
       logger.warn('SDK_SPAWN', `[session-${sessionDbId}] Claude process exited`, { code, signal, pid });
     }
     registry.unregister(recordId);
-    notifySlotAvailable();
   });
 
   if (!child.stdin || !child.stdout || !child.stderr) {
