@@ -22,6 +22,7 @@ const BLOCKED_ENV_VARS = [
 export interface ClaudeMemEnv {
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_BASE_URL?: string;
+  ANTHROPIC_AUTH_TOKEN?: string;
   GEMINI_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
 }
@@ -56,7 +57,7 @@ function parseEnvFile(content: string): Record<string, string> {
 function serializeEnvFile(env: Record<string, string>): string {
   const lines: string[] = [
     '# claude-mem credentials',
-    '# This file stores API keys for claude-mem memory agent',
+    '# This file stores keys and gateway settings for the claude-mem memory agent',
     '# Edit this file or use claude-mem settings to configure',
     '',
   ];
@@ -83,6 +84,7 @@ export function loadClaudeMemEnv(): ClaudeMemEnv {
     const result: ClaudeMemEnv = {};
     if (parsed.ANTHROPIC_API_KEY) result.ANTHROPIC_API_KEY = parsed.ANTHROPIC_API_KEY;
     if (parsed.ANTHROPIC_BASE_URL) result.ANTHROPIC_BASE_URL = parsed.ANTHROPIC_BASE_URL;
+    if (parsed.ANTHROPIC_AUTH_TOKEN) result.ANTHROPIC_AUTH_TOKEN = parsed.ANTHROPIC_AUTH_TOKEN;
     if (parsed.GEMINI_API_KEY) result.GEMINI_API_KEY = parsed.GEMINI_API_KEY;
     if (parsed.OPENROUTER_API_KEY) result.OPENROUTER_API_KEY = parsed.OPENROUTER_API_KEY;
 
@@ -124,6 +126,13 @@ export function saveClaudeMemEnv(env: ClaudeMemEnv): void {
       updated.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL;
     } else {
       delete updated.ANTHROPIC_BASE_URL;
+    }
+  }
+  if (env.ANTHROPIC_AUTH_TOKEN !== undefined) {
+    if (env.ANTHROPIC_AUTH_TOKEN) {
+      updated.ANTHROPIC_AUTH_TOKEN = env.ANTHROPIC_AUTH_TOKEN;
+    } else {
+      delete updated.ANTHROPIC_AUTH_TOKEN;
     }
   }
   if (env.GEMINI_API_KEY !== undefined) {
@@ -171,6 +180,9 @@ export function buildIsolatedEnv(includeCredentials: boolean = true): Record<str
     if (credentials.ANTHROPIC_BASE_URL) {
       isolatedEnv.ANTHROPIC_BASE_URL = credentials.ANTHROPIC_BASE_URL;
     }
+    if (credentials.ANTHROPIC_AUTH_TOKEN) {
+      isolatedEnv.ANTHROPIC_AUTH_TOKEN = credentials.ANTHROPIC_AUTH_TOKEN;
+    }
     if (credentials.GEMINI_API_KEY) {
       isolatedEnv.GEMINI_API_KEY = credentials.GEMINI_API_KEY;
     }
@@ -214,10 +226,9 @@ export async function buildIsolatedEnvWithFreshOAuth(
 
   if (!includeCredentials) return isolatedEnv;
 
-  // If the user already configured an ANTHROPIC_API_KEY in ~/.claude-mem/.env,
-  // honor that and skip OAuth lookup entirely. API key auth is preferred when
-  // explicitly configured because it's stateless and stable.
-  if (isolatedEnv.ANTHROPIC_API_KEY) {
+  // If the user already configured explicit Anthropic/gateway credentials in
+  // ~/.claude-mem/.env, honor those and skip OAuth lookup entirely.
+  if (isolatedEnv.ANTHROPIC_API_KEY || isolatedEnv.ANTHROPIC_AUTH_TOKEN) {
     clearStaleMarker();
     return isolatedEnv;
   }
@@ -276,9 +287,17 @@ export function hasAnthropicApiKey(): boolean {
   return !!env.ANTHROPIC_API_KEY;
 }
 
+export function hasAnthropicAuthToken(): boolean {
+  const env = loadClaudeMemEnv();
+  return !!env.ANTHROPIC_AUTH_TOKEN;
+}
+
 export function getAuthMethodDescription(): string {
   if (hasAnthropicApiKey()) {
     return 'API key (from ~/.claude-mem/.env)';
+  }
+  if (hasAnthropicAuthToken()) {
+    return 'Gateway auth token (from ~/.claude-mem/.env)';
   }
   // Note: this is a quick sync hint for logging — the authoritative OAuth
   // path is buildIsolatedEnvWithFreshOAuth() which reads the keychain at
