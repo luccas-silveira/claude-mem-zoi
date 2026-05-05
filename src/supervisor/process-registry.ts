@@ -448,7 +448,7 @@ function notifySlotAvailable(): void {
   if (waiter) waiter();
 }
 
-export async function waitForSlot(maxConcurrent: number): Promise<void> {
+export async function waitForSlot(maxConcurrent: number, signal?: AbortSignal): Promise<void> {
   getProcessRegistry().pruneDeadEntries();
   const activeCount = getActiveSdkCount();
   if (activeCount >= TOTAL_PROCESS_HARD_CAP) {
@@ -457,25 +457,44 @@ export async function waitForSlot(maxConcurrent: number): Promise<void> {
 
   if (activeCount < maxConcurrent) return;
 
+  if (signal?.aborted) {
+    throw new Error('waitForSlot aborted before queuing');
+  }
+
   logger.info('PROCESS', `Pool limit reached (${activeCount}/${maxConcurrent}), waiting for slot...`);
 
   return new Promise<void>((resolve, reject) => {
     let recheckTimer: ReturnType<typeof setInterval> | null = null;
+    let abortHandler: (() => void) | null = null;
+    const cleanup = () => {
+      if (recheckTimer) clearInterval(recheckTimer);
+      if (abortHandler && signal) signal.removeEventListener('abort', abortHandler);
+      const idx = slotWaiters.indexOf(onSlot);
+      if (idx >= 0) slotWaiters.splice(idx, 1);
+    };
     const onSlot = () => {
       const count = getActiveSdkCount();
       if (count >= TOTAL_PROCESS_HARD_CAP) {
-        if (recheckTimer) clearInterval(recheckTimer);
+        cleanup();
         reject(new Error(`Hard cap exceeded: ${count} processes in registry (cap=${TOTAL_PROCESS_HARD_CAP}). Refusing to spawn more.`));
         return;
       }
 
       if (count < maxConcurrent) {
-        if (recheckTimer) clearInterval(recheckTimer);
+        cleanup();
         resolve();
       } else {
         slotWaiters.push(onSlot);
       }
     };
+
+    if (signal) {
+      abortHandler = () => {
+        cleanup();
+        reject(new Error('waitForSlot aborted'));
+      };
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
 
     slotWaiters.push(onSlot);
     recheckTimer = setInterval(() => {

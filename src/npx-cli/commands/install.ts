@@ -588,15 +588,22 @@ type ProviderId = 'claude' | 'gemini' | 'openrouter';
 type ClaudeAccessMode = 'subscription' | 'api-key';
 type ClaudeApiMode = 'direct' | 'gateway';
 
-function resolveClaudeAuthMethod(): 'subscription' | 'api-key' | 'gateway' {
-  const stored = getSetting('CLAUDE_MEM_CLAUDE_AUTH_METHOD') as
-    | 'subscription'
-    | 'api-key'
-    | 'gateway'
-    | undefined;
-  if (stored === 'subscription' || stored === 'api-key' || stored === 'gateway') {
-    return stored;
+function readRawStoredAuthMethod(): 'subscription' | 'api-key' | 'gateway' | undefined {
+  try {
+    if (!existsSync(USER_SETTINGS_PATH)) return undefined;
+    const raw = JSON.parse(readFileSync(USER_SETTINGS_PATH, 'utf-8')) as Record<string, unknown>;
+    const flat = (raw.env && typeof raw.env === 'object' ? raw.env : raw) as Record<string, unknown>;
+    const value = flat.CLAUDE_MEM_CLAUDE_AUTH_METHOD;
+    if (value === 'subscription' || value === 'api-key' || value === 'gateway') return value;
+    return undefined;
+  } catch {
+    return undefined;
   }
+}
+
+function resolveClaudeAuthMethod(): 'subscription' | 'api-key' | 'gateway' {
+  const stored = readRawStoredAuthMethod();
+  if (stored) return stored;
   const env = loadClaudeMemEnv();
   if (env.ANTHROPIC_BASE_URL?.trim()) return 'gateway';
   if (env.ANTHROPIC_API_KEY?.trim()) return 'api-key';

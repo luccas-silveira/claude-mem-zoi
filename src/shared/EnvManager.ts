@@ -231,8 +231,14 @@ export async function buildIsolatedEnvWithFreshOAuth(
   if (!includeCredentials) return isolatedEnv;
 
   // If the user already configured explicit Anthropic/gateway credentials in
-  // ~/.claude-mem/.env, honor those and skip OAuth lookup entirely.
-  if (isolatedEnv.ANTHROPIC_API_KEY || isolatedEnv.ANTHROPIC_AUTH_TOKEN) {
+  // ~/.claude-mem/.env, honor those and skip OAuth lookup entirely. A bare
+  // ANTHROPIC_BASE_URL counts because gateways may be tokenless, and falling
+  // back to OAuth would silently route requests to api.anthropic.com.
+  if (
+    isolatedEnv.ANTHROPIC_API_KEY ||
+    isolatedEnv.ANTHROPIC_BASE_URL ||
+    isolatedEnv.ANTHROPIC_AUTH_TOKEN
+  ) {
     clearStaleMarker();
     return isolatedEnv;
   }
