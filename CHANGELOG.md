@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.7.1] - 2026-05-06
+
+## Added
+- Package the new `babysit` skill for monitoring PR checks, review comments, and unresolved review threads until a PR is merge-ready.
+
+## Verification
+- `npm run build`
+- `npm publish` completed for `claude-mem@12.7.1`
+
 ## [12.7.0] - 2026-05-06
 
 ## Added
