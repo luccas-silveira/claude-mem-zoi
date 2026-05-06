@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.7.2] - 2026-05-06
+
+### Fixed
+- Disable Claude Code built-in auto-memory during claude-code installs by setting `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` in Claude settings.
+- Make JSON config writes crash-safe, durable, symlink-safe, and safe for dangling symlink destinations.
+- Add regression coverage for atomic JSON writes through symlinked and dangling-symlink settings paths.
+
 ## [12.7.1] - 2026-05-06
 
 ## Added
