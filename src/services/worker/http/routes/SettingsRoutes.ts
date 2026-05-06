@@ -99,6 +99,9 @@ export class SettingsRoutes extends BaseRouteHandler {
       'CLAUDE_MEM_OPENROUTER_APP_NAME',
       'CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES',
       'CLAUDE_MEM_OPENROUTER_MAX_TOKENS',
+      'CLAUDE_MEM_OLLAMA_BASE_URL',
+      'CLAUDE_MEM_OLLAMA_MODEL',
+      'CLAUDE_MEM_OLLAMA_NUM_CTX',
       'CLAUDE_MEM_DATA_DIR',
       'CLAUDE_MEM_LOG_LEVEL',
       'CLAUDE_MEM_PYTHON_VERSION',
@@ -189,9 +192,9 @@ export class SettingsRoutes extends BaseRouteHandler {
 
   private validateSettings(settings: any): { valid: boolean; error?: string } {
     if (settings.CLAUDE_MEM_PROVIDER) {
-    const validProviders = ['claude', 'gemini', 'openrouter'];
+    const validProviders = ['claude', 'gemini', 'openrouter', 'ollama'];
     if (!validProviders.includes(settings.CLAUDE_MEM_PROVIDER)) {
-      return { valid: false, error: 'CLAUDE_MEM_PROVIDER must be "claude", "gemini", or "openrouter"' };
+      return { valid: false, error: 'CLAUDE_MEM_PROVIDER must be "claude", "gemini", "openrouter", or "ollama"' };
       }
     }
 
@@ -314,6 +317,22 @@ export class SettingsRoutes extends BaseRouteHandler {
       } catch (error) {
         logger.debug('SETTINGS', 'Invalid URL format', { url: settings.CLAUDE_MEM_OPENROUTER_SITE_URL, error: error instanceof Error ? error.message : String(error) });
         return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_SITE_URL must be a valid URL' };
+      }
+    }
+
+    if (settings.CLAUDE_MEM_OLLAMA_BASE_URL) {
+      try {
+        new URL(settings.CLAUDE_MEM_OLLAMA_BASE_URL);
+      } catch (error) {
+        logger.debug('SETTINGS', 'Invalid Ollama URL format', { url: settings.CLAUDE_MEM_OLLAMA_BASE_URL, error: error instanceof Error ? error.message : String(error) });
+        return { valid: false, error: 'CLAUDE_MEM_OLLAMA_BASE_URL must be a valid URL' };
+      }
+    }
+
+    if (settings.CLAUDE_MEM_OLLAMA_NUM_CTX) {
+      const numCtx = parseInt(settings.CLAUDE_MEM_OLLAMA_NUM_CTX, 10);
+      if (isNaN(numCtx) || numCtx <= 2048) {
+        return { valid: false, error: 'CLAUDE_MEM_OLLAMA_NUM_CTX must be greater than 2048' };
       }
     }
 

@@ -10,6 +10,7 @@ import { DatabaseManager } from '../../DatabaseManager.js';
 import { ClaudeProvider } from '../../ClaudeProvider.js';
 import { GeminiProvider, isGeminiSelected, isGeminiAvailable } from '../../GeminiProvider.js';
 import { OpenRouterProvider, isOpenRouterSelected, isOpenRouterAvailable } from '../../OpenRouterProvider.js';
+import { OllamaProvider, isOllamaSelected, isOllamaAvailable } from '../../OllamaProvider.js';
 import type { WorkerService } from '../../../worker-service.js';
 import { BaseRouteHandler } from '../BaseRouteHandler.js';
 import { SessionEventBroadcaster } from '../../events/SessionEventBroadcaster.js';
@@ -31,6 +32,7 @@ export class SessionRoutes extends BaseRouteHandler {
     private sdkAgent: ClaudeProvider,
     private geminiAgent: GeminiProvider,
     private openRouterAgent: OpenRouterProvider,
+    private ollamaAgent: OllamaProvider,
     private eventBroadcaster: SessionEventBroadcaster,
     private workerService: WorkerService,
     private completionHandler: SessionCompletionHandler,
@@ -38,7 +40,15 @@ export class SessionRoutes extends BaseRouteHandler {
     super();
   }
 
-  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider {
+  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider {
+    if (isOllamaSelected()) {
+      if (isOllamaAvailable()) {
+        logger.debug('SESSION', 'Using Ollama agent');
+        return this.ollamaAgent;
+      } else {
+        throw new Error('Ollama provider selected but not configured. Set CLAUDE_MEM_OLLAMA_BASE_URL and CLAUDE_MEM_OLLAMA_MODEL in settings.');
+      }
+    }
     if (isOpenRouterSelected()) {
       if (isOpenRouterAvailable()) {
         logger.debug('SESSION', 'Using OpenRouter agent');
@@ -58,7 +68,10 @@ export class SessionRoutes extends BaseRouteHandler {
     return this.sdkAgent;
   }
 
-  private getSelectedProvider(): 'claude' | 'gemini' | 'openrouter' {
+  private getSelectedProvider(): 'claude' | 'gemini' | 'openrouter' | 'ollama' {
+    if (isOllamaSelected() && isOllamaAvailable()) {
+      return 'ollama';
+    }
     if (isOpenRouterSelected() && isOpenRouterAvailable()) {
       return 'openrouter';
     }
@@ -91,7 +104,7 @@ export class SessionRoutes extends BaseRouteHandler {
 
   private startGeneratorWithProvider(
     session: ReturnType<typeof this.sessionManager.getSession>,
-    provider: 'claude' | 'gemini' | 'openrouter',
+    provider: 'claude' | 'gemini' | 'openrouter' | 'ollama',
     source: string
   ): void {
     if (!session) return;
@@ -103,8 +116,12 @@ export class SessionRoutes extends BaseRouteHandler {
       session.abortController = new AbortController();
     }
 
-    const agent = provider === 'openrouter' ? this.openRouterAgent : (provider === 'gemini' ? this.geminiAgent : this.sdkAgent);
-    const agentName = provider === 'openrouter' ? 'OpenRouter' : (provider === 'gemini' ? 'Gemini' : 'Claude SDK');
+    const agent = provider === 'ollama'
+      ? this.ollamaAgent
+      : (provider === 'openrouter' ? this.openRouterAgent : (provider === 'gemini' ? this.geminiAgent : this.sdkAgent));
+    const agentName = provider === 'ollama'
+      ? 'Ollama'
+      : (provider === 'openrouter' ? 'OpenRouter' : (provider === 'gemini' ? 'Gemini' : 'Claude SDK'));
 
     const pendingStore = this.sessionManager.getPendingMessageStore();
     const actualQueueDepth = pendingStore.getPendingCount(session.sessionDbId);

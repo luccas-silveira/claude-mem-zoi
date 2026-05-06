@@ -340,6 +340,7 @@ export function ContextSettingsModal({
                   <option value="claude">Claude (uses your Claude account)</option>
                   <option value="gemini">Gemini (uses API key)</option>
                   <option value="openrouter">OpenRouter (multi-model)</option>
+                  <option value="ollama">Ollama (local)</option>
                 </select>
               </FormField>
 
@@ -377,9 +378,10 @@ export function ContextSettingsModal({
                     tooltip="Gemini model used for generating observations"
                   >
                     <select
-                      value={formState.CLAUDE_MEM_GEMINI_MODEL || 'gemini-2.5-flash-lite'}
+                      value={formState.CLAUDE_MEM_GEMINI_MODEL || 'gemini-3.1-flash-lite-preview'}
                       onChange={(e) => updateSetting('CLAUDE_MEM_GEMINI_MODEL', e.target.value)}
                     >
+                      <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview (15 RPM, 500 RPD free)</option>
                       <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM free)</option>
                       <option value="gemini-2.5-flash">gemini-2.5-flash (5 RPM free)</option>
                       <option value="gemini-3-flash-preview">gemini-3-flash-preview (5 RPM free)</option>
@@ -441,6 +443,44 @@ export function ContextSettingsModal({
                       value={formState.CLAUDE_MEM_OPENROUTER_APP_NAME || 'claude-mem'}
                       onChange={(e) => updateSetting('CLAUDE_MEM_OPENROUTER_APP_NAME', e.target.value)}
                       placeholder="claude-mem"
+                    />
+                  </FormField>
+                </>
+              )}
+
+              {formState.CLAUDE_MEM_PROVIDER === 'ollama' && (
+                <>
+                  <FormField
+                    label="Ollama Base URL"
+                    tooltip="OpenAI-compatible endpoint exposed by Ollama (default http://localhost:11434/v1)"
+                  >
+                    <input
+                      type="text"
+                      value={formState.CLAUDE_MEM_OLLAMA_BASE_URL || 'http://localhost:11434/v1'}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_OLLAMA_BASE_URL', e.target.value)}
+                      placeholder="http://localhost:11434/v1"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Ollama Model"
+                    tooltip="Model tag installed locally (run `ollama list` to see available)"
+                  >
+                    <input
+                      type="text"
+                      value={formState.CLAUDE_MEM_OLLAMA_MODEL || 'gemma3n:e4b'}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_OLLAMA_MODEL', e.target.value)}
+                      placeholder="gemma3n:e4b"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Context Window (num_ctx)"
+                    tooltip="Maximum context tokens. Larger uses more RAM."
+                  >
+                    <input
+                      type="number"
+                      value={formState.CLAUDE_MEM_OLLAMA_NUM_CTX || '32768'}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_OLLAMA_NUM_CTX', e.target.value)}
+                      placeholder="32768"
                     />
                   </FormField>
                 </>

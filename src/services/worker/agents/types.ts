@@ -45,7 +45,8 @@ export interface SummarySSEPayload {
 
 export type SSEEventPayload =
   | { type: 'new_observation'; observation: ObservationSSEPayload }
-  | { type: 'new_summary'; summary: SummarySSEPayload };
+  | { type: 'new_summary'; summary: SummarySSEPayload }
+  | { type: 'llm_stream_delta'; provider: string; model: string; content: string };
 
 export interface StorageResult {
   observationIds: number[];

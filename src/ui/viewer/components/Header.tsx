@@ -36,13 +36,14 @@ export function Header({
       <div className="header-main">
         <h1>
           <div style={{ position: 'relative', display: 'inline-block' }}>
-            <img src="claude-mem-logomark.webp" alt="" className={`logomark ${isProcessing ? 'spinning' : ''}`} />
+            <img src="zoi-logo.png" alt="ZOI" className={`logomark ${isProcessing ? 'spinning' : ''}`} />
             {queueDepth > 0 && (
               <div className="queue-bubble">
                 {queueDepth}
               </div>
             )}
           </div>
+          <span className="logo-separator" aria-hidden="true">·</span>
           <span className="logo-text">claude-mem</span>
         </h1>
       </div>

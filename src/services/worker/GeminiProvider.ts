@@ -18,7 +18,7 @@ import {
 import { ClassifiedProviderError } from './provider-errors.js';
 import { withRetry } from './retry.js';
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
  * Parse Retry-After header (seconds or HTTP-date).
@@ -121,16 +121,18 @@ export type GeminiModel =
   | 'gemini-2.0-flash'
   | 'gemini-2.0-flash-lite'
   | 'gemini-3-flash'
-  | 'gemini-3-flash-preview';
+  | 'gemini-3-flash-preview'
+  | 'gemini-3.1-flash-lite-preview';
 
 const GEMINI_RPM_LIMITS: Record<GeminiModel, number> = {
   'gemini-2.5-flash-lite': 10,
-  'gemini-2.5-flash': 10,
+  'gemini-2.5-flash': 5,
   'gemini-2.5-pro': 5,
   'gemini-2.0-flash': 15,
   'gemini-2.0-flash-lite': 30,
-  'gemini-3-flash': 10,
+  'gemini-3-flash': 5,
   'gemini-3-flash-preview': 5,
+  'gemini-3.1-flash-lite-preview': 15,
 };
 
 let lastRequestTime = 0;
@@ -456,7 +458,8 @@ export class GeminiProvider {
             contents,
             generationConfig: {
               temperature: 0.3,  // Lower temperature for structured extraction
-              maxOutputTokens: 4096,
+              maxOutputTokens: 8192,
+              thinkingConfig: { thinkingBudget: 0 },
             },
           }),
           signal: attemptSignal,
@@ -506,7 +509,7 @@ export class GeminiProvider {
 
     const apiKey = settings.CLAUDE_MEM_GEMINI_API_KEY || getCredential('GEMINI_API_KEY') || '';
 
-    const defaultModel: GeminiModel = 'gemini-2.5-flash';
+    const defaultModel: GeminiModel = 'gemini-3.1-flash-lite-preview';
     const configuredModel = settings.CLAUDE_MEM_GEMINI_MODEL || defaultModel;
     const validModels: GeminiModel[] = [
       'gemini-2.5-flash-lite',
@@ -516,6 +519,7 @@ export class GeminiProvider {
       'gemini-2.0-flash-lite',
       'gemini-3-flash',
       'gemini-3-flash-preview',
+      'gemini-3.1-flash-lite-preview',
     ];
 
     let model: GeminiModel;

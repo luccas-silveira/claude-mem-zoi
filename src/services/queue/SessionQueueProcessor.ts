@@ -3,7 +3,7 @@ import { PendingMessageStore, PersistentPendingMessage } from '../sqlite/Pending
 import type { PendingMessageWithId } from '../worker-types.js';
 import { logger } from '../../utils/logger.js';
 
-const IDLE_TIMEOUT_MS = 3 * 60 * 1000; 
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; 
 
 export interface CreateIteratorOptions {
   sessionDbId: number;

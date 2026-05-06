@@ -12,6 +12,10 @@ function stripCodeFences(text: string): string {
   return match ? match[1] : text;
 }
 
+function stripThinkTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
+}
+
 export interface ParsedObservation {
   type: string;
   title: string | null;
@@ -43,6 +47,7 @@ export function parseAgentXml(raw: string, correlationId?: string | number): Par
     return { valid: false };
   }
 
+  raw = stripThinkTags(raw);
   raw = stripCodeFences(raw);
 
   const skipMatch = /<skip_summary(?:\s+reason="([^"]*)")?\s*\/>/.exec(raw);

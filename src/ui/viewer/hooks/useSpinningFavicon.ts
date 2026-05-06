@@ -16,7 +16,7 @@ export function useSpinningFavicon(isProcessing: boolean) {
 
     if (!imageRef.current) {
       imageRef.current = new Image();
-      imageRef.current.src = 'claude-mem-logomark.webp';
+      imageRef.current.src = 'zoi-logo.png';
     }
 
     if (!originalFaviconRef.current) {

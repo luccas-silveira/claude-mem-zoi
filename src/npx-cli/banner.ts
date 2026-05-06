@@ -8,19 +8,22 @@ const RESET = '\x1b[0m';
 
 const FRAME_SEP = '\x01';
 
+// ZOI DS palette (truecolor) with 8-bit fallbacks for legacy terminals.
+// primary  = --green-400 #b5ff81 → rgb(181, 255, 129); 8-bit ANSI 156 (light green).
+// accent   = --magenta-500 #cc3366 → rgb(204, 51, 102); 8-bit ANSI 161 (rose).
 function primaryColor(truecolor: boolean, brightness: number = 1.0): string {
-  if (!truecolor) return '\x1b[38;5;208m';
-  const r = Math.min(255, Math.round(230 * brightness));
-  const g = Math.min(255, Math.round(115 * brightness));
-  const b = Math.min(255, Math.round(70 * brightness));
+  if (!truecolor) return '\x1b[38;5;156m';
+  const r = Math.min(255, Math.round(181 * brightness));
+  const g = Math.min(255, Math.round(255 * brightness));
+  const b = Math.min(255, Math.round(129 * brightness));
   return `\x1b[38;2;${r};${g};${b}m`;
 }
 
 function accentColor(truecolor: boolean, brightness: number = 1.0): string {
-  if (!truecolor) return '\x1b[38;5;215m';
-  const r = Math.min(255, Math.round(255 * brightness));
-  const g = Math.min(255, Math.round(180 * brightness));
-  const b = Math.min(255, Math.round(122 * brightness));
+  if (!truecolor) return '\x1b[38;5;161m';
+  const r = Math.min(255, Math.round(204 * brightness));
+  const g = Math.min(255, Math.round(51 * brightness));
+  const b = Math.min(255, Math.round(102 * brightness));
   return `\x1b[38;2;${r};${g};${b}m`;
 }
 

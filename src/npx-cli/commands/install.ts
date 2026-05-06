@@ -616,9 +616,48 @@ function mergeSettings(updates: Record<string, string>): boolean {
   }
 }
 
-type ProviderId = 'claude' | 'gemini' | 'openrouter';
+type ProviderId = 'claude' | 'gemini' | 'openrouter' | 'ollama';
 type ClaudeAccessMode = 'subscription' | 'api-key';
 type ClaudeApiMode = 'direct' | 'gateway';
+
+function normalizeOllamaBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, '');
+}
+
+function isValidUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
+  const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/models`, {
+    signal: AbortSignal.timeout(3000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama returned ${response.status}`);
+  }
+
+  const body = await response.json() as {
+    data?: Array<{ id?: string }>;
+    models?: Array<{ name?: string; model?: string; id?: string }>;
+  };
+
+  const ids = new Set<string>();
+  for (const item of body.data ?? []) {
+    if (item.id) ids.add(item.id);
+  }
+  for (const item of body.models ?? []) {
+    const name = item.name ?? item.model ?? item.id;
+    if (name) ids.add(name);
+  }
+
+  return [...ids].sort();
+}
 
 function readRawStoredAuthMethod(): 'subscription' | 'api-key' | 'gateway' | undefined {
   try {
@@ -662,6 +701,93 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
       ANTHROPIC_AUTH_TOKEN: '',
     });
     log.info('Configured claude-mem to use your logged-in Claude SDK account.');
+  };
+
+  const persistOllamaProvider = (baseUrl: string, model: string, numCtx: string) => {
+    const wrote = mergeSettings({
+      CLAUDE_MEM_PROVIDER: 'ollama',
+      CLAUDE_MEM_OLLAMA_BASE_URL: normalizeOllamaBaseUrl(baseUrl),
+      CLAUDE_MEM_OLLAMA_MODEL: model.trim(),
+      CLAUDE_MEM_OLLAMA_NUM_CTX: numCtx.trim(),
+    });
+    if (wrote) log.info('Saved Ollama configuration to ~/.claude-mem/settings.json');
+  };
+
+  const configureOllamaProvider = async (): Promise<void> => {
+    const existingBaseUrl = getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1';
+    const existingModel = getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'gemma3n:e4b';
+    const existingNumCtx = getSetting('CLAUDE_MEM_OLLAMA_NUM_CTX') || '32768';
+
+    const baseUrlResult = await p.text({
+      message: 'Ollama OpenAI-compatible base URL:',
+      placeholder: 'http://localhost:11434/v1',
+      defaultValue: existingBaseUrl,
+      validate: (v?: string) => {
+        const value = v?.trim() ?? '';
+        if (!value) return 'Base URL required';
+        return isValidUrl(value) ? undefined : 'Enter a valid URL, for example http://localhost:11434/v1';
+      },
+    });
+
+    if (p.isCancel(baseUrlResult)) {
+      log.warn('Ollama setup cancelled — falling back to Claude provider.');
+      persistClaudeProvider();
+      return;
+    }
+
+    const baseUrl = normalizeOllamaBaseUrl(String(baseUrlResult));
+    let availableModels: string[] = [];
+    const spinner = p.spinner();
+    spinner.start('Checking Ollama models...');
+    try {
+      availableModels = await fetchOllamaModels(baseUrl);
+      spinner.stop(`Found ${availableModels.length} Ollama model(s).`);
+    } catch (error: unknown) {
+      spinner.stop('Could not reach Ollama.');
+      throw new Error(`Ollama não está rodando ou não respondeu em ${baseUrl}/models. Execute \`ollama serve\` e tente novamente. (${error instanceof Error ? error.message : String(error)})`);
+    }
+
+    const modelResult = await p.text({
+      message: 'Ollama model tag:',
+      placeholder: 'gemma3n:e4b',
+      defaultValue: existingModel,
+      validate: (v?: string) => {
+        const value = v?.trim() ?? '';
+        if (!value) return 'Model required';
+        if (availableModels.length > 0 && !availableModels.includes(value)) {
+          return `Model not found. Available: ${availableModels.slice(0, 8).join(', ')}${availableModels.length > 8 ? ', ...' : ''}`;
+        }
+        return undefined;
+      },
+    });
+
+    if (p.isCancel(modelResult)) {
+      log.warn('Ollama model prompt cancelled — falling back to Claude provider.');
+      persistClaudeProvider();
+      return;
+    }
+
+    const numCtxResult = await p.text({
+      message: 'Ollama num_ctx:',
+      placeholder: '32768',
+      defaultValue: existingNumCtx,
+      validate: (v?: string) => {
+        const value = v?.trim() ?? '';
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed <= 2048) {
+          return 'Enter an integer greater than 2048';
+        }
+        return undefined;
+      },
+    });
+
+    if (p.isCancel(numCtxResult)) {
+      log.warn('Ollama num_ctx prompt cancelled — falling back to Claude provider.');
+      persistClaudeProvider();
+      return;
+    }
+
+    persistOllamaProvider(baseUrl, String(modelResult), String(numCtxResult));
   };
 
   const configureDirectApiKey = async (): Promise<void> => {
@@ -762,6 +888,14 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         persistClaudeProvider();
         return 'claude';
       }
+      if (options.provider === 'ollama') {
+        persistOllamaProvider(
+          getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1',
+          getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'gemma3n:e4b',
+          getSetting('CLAUDE_MEM_OLLAMA_NUM_CTX') || '32768',
+        );
+        return 'ollama';
+      }
       const wrote = mergeSettings({ CLAUDE_MEM_PROVIDER: options.provider });
       if (wrote) log.info(`Saved provider=${options.provider} to ~/.claude-mem/settings.json`);
       log.warn(`Provider=${options.provider} requested non-interactively. API key prompt skipped — set CLAUDE_MEM_${options.provider.toUpperCase()}_API_KEY and CLAUDE_MEM_PROVIDER in settings.json or env manually if not already set.`);
@@ -824,6 +958,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         { value: 'claude', label: 'Claude Agent SDK (recommended)' },
         { value: 'gemini', label: 'Gemini' },
         { value: 'openrouter', label: 'OpenRouter' },
+        { value: 'ollama', label: 'Ollama (local)' },
       ],
       initialValue: initialProvider,
     });
@@ -837,6 +972,11 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   if (selectedProvider === 'claude') {
     await runClaudeAuthFlow();
     return 'claude';
+  }
+
+  if (selectedProvider === 'ollama') {
+    await configureOllamaProvider();
+    return 'ollama';
   }
 
   const providerLabel = selectedProvider === 'gemini' ? 'Gemini' : 'OpenRouter';
@@ -953,7 +1093,7 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
 
 export interface InstallOptions {
   ide?: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
+  provider?: 'claude' | 'gemini' | 'openrouter' | 'ollama';
   model?: string;
   noAutoStart?: boolean;
 }

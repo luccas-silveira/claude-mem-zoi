@@ -78,6 +78,15 @@ ${mode.prompts.footer}
 ${mode.prompts.header_memory_start}`;
 }
 
+const MAX_TOOL_FIELD_CHARS = 4000;
+
+function truncateForPrompt(value: unknown): string {
+  const str = JSON.stringify(value, null, 2) ?? '';
+  if (str.length <= MAX_TOOL_FIELD_CHARS) return str;
+  const head = str.slice(0, MAX_TOOL_FIELD_CHARS);
+  return `${head}\n... [truncated ${str.length - MAX_TOOL_FIELD_CHARS} chars]`;
+}
+
 export function buildObservationPrompt(obs: Observation): string {
   let toolInput: any;
   let toolOutput: any;
@@ -103,8 +112,8 @@ export function buildObservationPrompt(obs: Observation): string {
   return `<observed_from_primary_session>
   <what_happened>${obs.tool_name}</what_happened>
   <occurred_at>${new Date(obs.created_at_epoch).toISOString()}</occurred_at>${obs.cwd ? `\n  <working_directory>${obs.cwd}</working_directory>` : ''}
-  <parameters>${JSON.stringify(toolInput, null, 2)}</parameters>
-  <outcome>${JSON.stringify(toolOutput, null, 2)}</outcome>
+  <parameters>${truncateForPrompt(toolInput)}</parameters>
+  <outcome>${truncateForPrompt(toolOutput)}</outcome>
 </observed_from_primary_session>
 
 Return either one or more <observation>...</observation> blocks, or an empty response if this tool use should be skipped.

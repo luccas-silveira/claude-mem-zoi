@@ -8,6 +8,7 @@ import { USER_SETTINGS_PATH, OBSERVER_SESSIONS_DIR, ensureDir } from '../../../s
 import { buildIsolatedEnvWithFreshOAuth } from '../../../shared/EnvManager.js';
 import { findClaudeExecutable } from '../../../shared/find-claude-executable.js';
 import { sanitizeEnv } from '../../../supervisor/env-sanitizer.js';
+import { isOllamaSelected } from '../OllamaProvider.js';
 
 // @ts-ignore - Agent SDK types may not be available
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -37,6 +38,8 @@ export class KnowledgeAgent {
   }
 
   async prime(corpus: CorpusFile): Promise<string> {
+    this.assertOllamaUnsupported();
+
     const renderedCorpus = this.renderer.renderCorpus(corpus);
 
     const primePrompt = [
@@ -98,6 +101,8 @@ export class KnowledgeAgent {
   }
 
   async query(corpus: CorpusFile, question: string): Promise<QueryResult> {
+    this.assertOllamaUnsupported();
+
     if (!corpus.session_id) {
       throw new Error(`Corpus "${corpus.name}" has no session — call prime first`);
     }
@@ -134,8 +139,16 @@ export class KnowledgeAgent {
   }
 
   async reprime(corpus: CorpusFile): Promise<string> {
+    this.assertOllamaUnsupported();
+
     corpus.session_id = null;  
     return this.prime(corpus);
+  }
+
+  private assertOllamaUnsupported(): void {
+    if (isOllamaSelected()) {
+      throw new Error('KnowledgeAgent não suporta Ollama. Use Claude/Gemini/OpenRouter.');
+    }
   }
 
   private isSessionResumeError(error: unknown): boolean {
