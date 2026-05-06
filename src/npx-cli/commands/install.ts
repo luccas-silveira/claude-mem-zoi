@@ -243,17 +243,17 @@ function makeIDETask(ideId: string, failedIDEs: string[], pendingErrors: string[
 
     case 'codex-cli': {
       return {
-        title: 'Codex CLI: configuring transcript watching',
+        title: 'Codex CLI: registering hooks marketplace',
         task: async (message) => {
           message('Loading Codex CLI installer…');
           const { installCodexCli } = await import('../../services/integrations/CodexCliInstaller.js');
-          message('Configuring transcript watching…');
-          const { result, output } = await bufferConsole(() => installCodexCli());
+          message('Registering native Codex hooks…');
+          const { result, output } = await bufferConsole(() => installCodexCli(marketplaceDirectory()));
           if (result !== 0) {
             recordFailure('Codex CLI: integration setup failed', output);
             return `Codex CLI: integration setup failed ${pc.red('FAIL')}`;
           }
-          return `Codex CLI: transcript watching configured ${pc.green('OK')}`;
+          return `Codex CLI: hooks marketplace registered ${pc.green('OK')}`;
         },
       };
     }
@@ -500,6 +500,9 @@ function copyPluginToMarketplace(): void {
   ensureDirectoryExists(marketplaceDir);
 
   const allowedTopLevelEntries = [
+    '.agents',
+    '.codex-plugin',
+    '.mcp.json',
     'plugin',
     'package.json',
     'package-lock.json',
