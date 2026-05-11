@@ -12,6 +12,105 @@ interface ContextSettingsModalProps {
   saveStatus: string;
 }
 
+function OllamaModelPicker({
+  baseUrl,
+  value,
+  onChange,
+}: {
+  baseUrl: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [manual, setManual] = useState(false);
+
+  const fetchModels = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const root = baseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+      const res = await fetch(`${root}/api/tags`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const names = Array.isArray(data?.models)
+        ? data.models.map((m: any) => m.name).filter(Boolean)
+        : [];
+      setModels(names);
+      if (names.length === 0) setError('No models installed. Run `ollama pull <model>`.');
+    } catch (e: any) {
+      setError(e?.message || 'Fetch failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [baseUrl]);
+
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  const showManual = manual || (error && models.length === 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {showManual ? (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="qwen2.5-coder:7b"
+            style={{ flex: 1 }}
+          />
+        ) : (
+          <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={loading || models.length === 0}
+            style={{ flex: 1 }}
+          >
+            {value && !models.includes(value) && (
+              <option value={value}>{value} (not installed)</option>
+            )}
+            {!value && <option value="">— select model —</option>}
+            {models.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          onClick={fetchModels}
+          disabled={loading}
+          title="Refresh model list"
+          style={{ padding: '4px 8px' }}
+        >
+          {loading ? '…' : '↻'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setManual(!manual)}
+          title={manual ? 'Pick from list' : 'Type manually'}
+          style={{ padding: '4px 8px' }}
+        >
+          {manual ? '☰' : '✎'}
+        </button>
+      </div>
+      {error && (
+        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary, #888)' }}>
+          {error}
+        </span>
+      )}
+      {!error && !loading && models.length > 0 && (
+        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary, #888)' }}>
+          {models.length} model{models.length === 1 ? '' : 's'} detected
+        </span>
+      )}
+    </div>
+  );
+}
+
 function CollapsibleSection({
   title,
   description,
@@ -463,13 +562,12 @@ export function ContextSettingsModal({
                   </FormField>
                   <FormField
                     label="Ollama Model"
-                    tooltip="Model tag installed locally (run `ollama list` to see available)"
+                    tooltip="Detected from `ollama list` via /api/tags. Refresh after pulling new models."
                   >
-                    <input
-                      type="text"
-                      value={formState.CLAUDE_MEM_OLLAMA_MODEL || 'gemma3n:e4b'}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_OLLAMA_MODEL', e.target.value)}
-                      placeholder="gemma3n:e4b"
+                    <OllamaModelPicker
+                      baseUrl={formState.CLAUDE_MEM_OLLAMA_BASE_URL || 'http://localhost:11434/v1'}
+                      value={formState.CLAUDE_MEM_OLLAMA_MODEL || ''}
+                      onChange={(v) => updateSetting('CLAUDE_MEM_OLLAMA_MODEL', v)}
                     />
                   </FormField>
                   <FormField

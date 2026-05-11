@@ -633,6 +633,46 @@ function isValidUrl(value: string): boolean {
   }
 }
 
+function ollamaNativeRoot(baseUrl: string): string {
+  return normalizeOllamaBaseUrl(baseUrl).replace(/\/v1$/, '');
+}
+
+async function pullOllamaModel(baseUrl: string, model: string): Promise<void> {
+  const root = ollamaNativeRoot(baseUrl);
+  const response = await fetch(`${root}/api/pull`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: model, stream: true }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Ollama pull failed: HTTP ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const evt = JSON.parse(line) as { error?: string; status?: string };
+        if (evt.error) throw new Error(evt.error);
+      } catch (err) {
+        if (err instanceof Error && err.message && !line.startsWith('{')) {
+          throw err;
+        }
+      }
+    }
+  }
+}
+
 async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
   const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/models`, {
     signal: AbortSignal.timeout(3000),
@@ -715,7 +755,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
 
   const configureOllamaProvider = async (): Promise<void> => {
     const existingBaseUrl = getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1';
-    const existingModel = getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'gemma3n:e4b';
+    const existingModel = getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'phi4:14b';
     const existingNumCtx = getSetting('CLAUDE_MEM_OLLAMA_NUM_CTX') || '32768';
 
     const baseUrlResult = await p.text({
@@ -749,14 +789,11 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
 
     const modelResult = await p.text({
       message: 'Ollama model tag:',
-      placeholder: 'gemma3n:e4b',
+      placeholder: 'phi4:14b',
       defaultValue: existingModel,
       validate: (v?: string) => {
         const value = v?.trim() ?? '';
         if (!value) return 'Model required';
-        if (availableModels.length > 0 && !availableModels.includes(value)) {
-          return `Model not found. Available: ${availableModels.slice(0, 8).join(', ')}${availableModels.length > 8 ? ', ...' : ''}`;
-        }
         return undefined;
       },
     });
@@ -765,6 +802,21 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
       log.warn('Ollama model prompt cancelled — falling back to Claude provider.');
       persistClaudeProvider();
       return;
+    }
+
+    const chosenModel = String(modelResult).trim();
+    if (!availableModels.includes(chosenModel)) {
+      const pullSpinner = p.spinner();
+      pullSpinner.start(`Baixando modelo \`${chosenModel}\` via Ollama (pode demorar)...`);
+      try {
+        await pullOllamaModel(baseUrl, chosenModel);
+        pullSpinner.stop(`Modelo \`${chosenModel}\` baixado.`);
+      } catch (error: unknown) {
+        pullSpinner.stop('Falha ao baixar modelo.');
+        throw new Error(
+          `Falha ao baixar \`${chosenModel}\` do Ollama. Execute \`ollama pull ${chosenModel}\` manualmente e rode a instalação novamente. (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
     }
 
     const numCtxResult = await p.text({
@@ -787,7 +839,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
       return;
     }
 
-    persistOllamaProvider(baseUrl, String(modelResult), String(numCtxResult));
+    persistOllamaProvider(baseUrl, chosenModel, String(numCtxResult));
   };
 
   const configureDirectApiKey = async (): Promise<void> => {
@@ -889,9 +941,21 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         return 'claude';
       }
       if (options.provider === 'ollama') {
+        const ollamaBaseUrl = getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1';
+        const ollamaModel = getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'phi4:14b';
+        try {
+          const installed = await fetchOllamaModels(ollamaBaseUrl);
+          if (!installed.includes(ollamaModel)) {
+            log.info(`Baixando modelo Ollama \`${ollamaModel}\` (pode demorar)...`);
+            await pullOllamaModel(ollamaBaseUrl, ollamaModel);
+            log.info(`Modelo \`${ollamaModel}\` baixado.`);
+          }
+        } catch (error: unknown) {
+          log.warn(`Não foi possível garantir o modelo \`${ollamaModel}\`: ${error instanceof Error ? error.message : String(error)}`);
+        }
         persistOllamaProvider(
-          getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1',
-          getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'gemma3n:e4b',
+          ollamaBaseUrl,
+          ollamaModel,
           getSetting('CLAUDE_MEM_OLLAMA_NUM_CTX') || '32768',
         );
         return 'ollama';
