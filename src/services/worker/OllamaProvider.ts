@@ -16,7 +16,7 @@ import { ClassifiedProviderError } from './provider-errors.js';
 import { withRetry } from './retry.js';
 
 const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_OLLAMA_MODEL = 'gemma3n:e4b';
+const DEFAULT_OLLAMA_MODEL = 'phi4:14b';
 const DEFAULT_OLLAMA_NUM_CTX = 32768;
 const RESPONSE_TOKEN_RESERVE = 2048;
 const CHARS_PER_TOKEN_ESTIMATE = 4;

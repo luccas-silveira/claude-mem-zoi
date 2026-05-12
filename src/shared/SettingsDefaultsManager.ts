@@ -90,7 +90,7 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES: '20',  // Max messages in context window
     CLAUDE_MEM_OPENROUTER_MAX_TOKENS: '100000',  // Max estimated tokens (~100k safety limit)
     CLAUDE_MEM_OLLAMA_BASE_URL: 'http://localhost:11434/v1',  // Local Ollama OpenAI-compatible endpoint
-    CLAUDE_MEM_OLLAMA_MODEL: 'gemma3n:e4b',  // Default local Ollama model
+    CLAUDE_MEM_OLLAMA_MODEL: 'phi4:14b',  // Default local Ollama model
     CLAUDE_MEM_OLLAMA_NUM_CTX: '32768',  // Ollama context window
     CLAUDE_MEM_DATA_DIR: join(homedir(), '.claude-mem'),
     CLAUDE_MEM_LOG_LEVEL: 'INFO',
