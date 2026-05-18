@@ -102,6 +102,11 @@ export class SettingsRoutes extends BaseRouteHandler {
       'CLAUDE_MEM_OLLAMA_BASE_URL',
       'CLAUDE_MEM_OLLAMA_MODEL',
       'CLAUDE_MEM_OLLAMA_NUM_CTX',
+      'CLAUDE_MEM_DEEPSEEK_API_KEY',
+      'CLAUDE_MEM_DEEPSEEK_MODEL',
+      'CLAUDE_MEM_DEEPSEEK_BASE_URL',
+      'CLAUDE_MEM_DEEPSEEK_MAX_CONTEXT_MESSAGES',
+      'CLAUDE_MEM_DEEPSEEK_MAX_TOKENS',
       'CLAUDE_MEM_DATA_DIR',
       'CLAUDE_MEM_LOG_LEVEL',
       'CLAUDE_MEM_PYTHON_VERSION',
@@ -192,9 +197,9 @@ export class SettingsRoutes extends BaseRouteHandler {
 
   private validateSettings(settings: any): { valid: boolean; error?: string } {
     if (settings.CLAUDE_MEM_PROVIDER) {
-    const validProviders = ['claude', 'gemini', 'openrouter', 'ollama'];
+    const validProviders = ['claude', 'gemini', 'openrouter', 'ollama', 'deepseek'];
     if (!validProviders.includes(settings.CLAUDE_MEM_PROVIDER)) {
-      return { valid: false, error: 'CLAUDE_MEM_PROVIDER must be "claude", "gemini", "openrouter", or "ollama"' };
+      return { valid: false, error: 'CLAUDE_MEM_PROVIDER must be "claude", "gemini", "openrouter", "ollama", or "deepseek"' };
       }
     }
 
@@ -322,6 +327,29 @@ export class SettingsRoutes extends BaseRouteHandler {
       } catch (error) {
         logger.debug('SETTINGS', 'Invalid URL format', { url: settings.CLAUDE_MEM_OPENROUTER_SITE_URL, error: error instanceof Error ? error.message : String(error) });
         return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_SITE_URL must be a valid URL' };
+      }
+    }
+
+    if (settings.CLAUDE_MEM_DEEPSEEK_MAX_CONTEXT_MESSAGES) {
+      const count = parseInt(settings.CLAUDE_MEM_DEEPSEEK_MAX_CONTEXT_MESSAGES, 10);
+      if (isNaN(count) || count < 1 || count > 100) {
+        return { valid: false, error: 'CLAUDE_MEM_DEEPSEEK_MAX_CONTEXT_MESSAGES must be between 1 and 100' };
+      }
+    }
+
+    if (settings.CLAUDE_MEM_DEEPSEEK_MAX_TOKENS) {
+      const tokens = parseInt(settings.CLAUDE_MEM_DEEPSEEK_MAX_TOKENS, 10);
+      if (isNaN(tokens) || tokens < 1000 || tokens > 1000000) {
+        return { valid: false, error: 'CLAUDE_MEM_DEEPSEEK_MAX_TOKENS must be between 1000 and 1000000' };
+      }
+    }
+
+    if (settings.CLAUDE_MEM_DEEPSEEK_BASE_URL) {
+      try {
+        new URL(settings.CLAUDE_MEM_DEEPSEEK_BASE_URL);
+      } catch (error) {
+        logger.debug('SETTINGS', 'Invalid DeepSeek URL format', { url: settings.CLAUDE_MEM_DEEPSEEK_BASE_URL, error: error instanceof Error ? error.message : String(error) });
+        return { valid: false, error: 'CLAUDE_MEM_DEEPSEEK_BASE_URL must be a valid URL' };
       }
     }
 

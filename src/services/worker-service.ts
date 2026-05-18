@@ -63,6 +63,7 @@ import type { WorkerRef } from './worker/agents/types.js';
 import { GeminiProvider, classifyGeminiError, isGeminiSelected, isGeminiAvailable } from './worker/GeminiProvider.js';
 import { OpenRouterProvider, classifyOpenRouterError, isOpenRouterSelected, isOpenRouterAvailable } from './worker/OpenRouterProvider.js';
 import { OllamaProvider, classifyOllamaError, isOllamaSelected, isOllamaAvailable } from './worker/OllamaProvider.js';
+import { DeepSeekProvider, classifyDeepSeekError, isDeepSeekSelected, isDeepSeekAvailable } from './worker/DeepSeekProvider.js';
 import { ClassifiedProviderError, isClassified, type ProviderErrorClass } from './worker/provider-errors.js';
 import { PaginationHelper } from './worker/PaginationHelper.js';
 import { SettingsManager } from './worker/SettingsManager.js';
@@ -121,6 +122,7 @@ export class WorkerService implements WorkerRef {
   private geminiAgent: GeminiProvider;
   private openRouterAgent: OpenRouterProvider;
   private ollamaAgent: OllamaProvider;
+  private deepseekAgent: DeepSeekProvider;
   private paginationHelper: PaginationHelper;
   private settingsManager: SettingsManager;
   private sessionEventBroadcaster: SessionEventBroadcaster;
@@ -153,6 +155,7 @@ export class WorkerService implements WorkerRef {
     this.geminiAgent = new GeminiProvider(this.dbManager, this.sessionManager);
     this.openRouterAgent = new OpenRouterProvider(this.dbManager, this.sessionManager);
     this.ollamaAgent = new OllamaProvider(this.dbManager, this.sessionManager);
+    this.deepseekAgent = new DeepSeekProvider(this.dbManager, this.sessionManager);
 
     this.paginationHelper = new PaginationHelper(this.dbManager);
     this.settingsManager = new SettingsManager(this.dbManager);
@@ -186,6 +189,7 @@ export class WorkerService implements WorkerRef {
       getAiStatus: () => {
         let provider = 'claude';
         if (isOllamaSelected() && isOllamaAvailable()) provider = 'ollama';
+        else if (isDeepSeekSelected() && isDeepSeekAvailable()) provider = 'deepseek';
         else if (isOpenRouterSelected() && isOpenRouterAvailable()) provider = 'openrouter';
         else if (isGeminiSelected() && isGeminiAvailable()) provider = 'gemini';
         return {
@@ -248,7 +252,7 @@ export class WorkerService implements WorkerRef {
     });
 
     this.server.registerRoutes(new ViewerRoutes(this.sseBroadcaster, this.dbManager, this.sessionManager));
-    const sessionRoutes = new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.geminiAgent, this.openRouterAgent, this.ollamaAgent, this.sessionEventBroadcaster, this, this.completionHandler);
+    const sessionRoutes = new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.geminiAgent, this.openRouterAgent, this.ollamaAgent, this.deepseekAgent, this.sessionEventBroadcaster, this, this.completionHandler);
     this.server.registerRoutes(sessionRoutes);
     attachIngestGeneratorStarter((sessionDbId, source) =>
       sessionRoutes.ensureGeneratorRunning(sessionDbId, source),
@@ -482,9 +486,12 @@ export class WorkerService implements WorkerRef {
     });
   }
 
-  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider {
+  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider | DeepSeekProvider {
     if (isOllamaSelected() && isOllamaAvailable()) {
       return this.ollamaAgent;
+    }
+    if (isDeepSeekSelected() && isDeepSeekAvailable()) {
+      return this.deepseekAgent;
     }
     if (isOpenRouterSelected() && isOpenRouterAvailable()) {
       return this.openRouterAgent;
@@ -506,7 +513,7 @@ export class WorkerService implements WorkerRef {
    */
   private reclassifyAtDispatch(
     error: unknown,
-    agent: ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider
+    agent: ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider | DeepSeekProvider
   ): ClassifiedProviderError | null {
     try {
       if (agent instanceof ClaudeProvider) {
@@ -521,6 +528,9 @@ export class WorkerService implements WorkerRef {
       }
       if (agent instanceof OllamaProvider) {
         return classifyOllamaError({ cause: error });
+      }
+      if (agent instanceof DeepSeekProvider) {
+        return classifyDeepSeekError({ cause: error });
       }
     } catch {
       // If the classifier itself throws, fall back to unclassified.

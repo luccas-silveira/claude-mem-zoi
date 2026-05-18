@@ -95,12 +95,27 @@ export class SessionManager {
       memory_session_id: dbSession.memory_session_id
     });
 
+    // Issue #817: on worker restart, only the Claude SDK loses real session
+    // context (its session_id ties to in-flight SDK state). Stateless providers
+    // (deepseek-/gemini-/openrouter-/ollama-) use memory_session_id purely as a
+    // grouping key for stored observations — fully safe to reuse across restarts.
+    let rehydratedMemorySessionId: string | null = null;
     if (dbSession.memory_session_id) {
-      logger.warn('SESSION', `Discarding stale memory_session_id from previous worker instance (Issue #817)`, {
-        sessionDbId,
-        staleMemorySessionId: dbSession.memory_session_id,
-        reason: 'SDK context lost on worker restart - will capture new ID'
-      });
+      const id = dbSession.memory_session_id;
+      const isStatelessProviderId = /^(deepseek|gemini|openrouter|ollama)-/.test(id);
+      if (isStatelessProviderId) {
+        rehydratedMemorySessionId = id;
+        logger.debug('SESSION', 'Reusing memory_session_id from DB (stateless provider)', {
+          sessionDbId,
+          memorySessionId: id
+        });
+      } else {
+        logger.warn('SESSION', `Discarding stale memory_session_id from previous worker instance (Issue #817)`, {
+          sessionDbId,
+          staleMemorySessionId: id,
+          reason: 'Claude SDK context lost on worker restart - will capture new ID'
+        });
+      }
     }
 
     const userPrompt = currentUserPrompt || dbSession.user_prompt;
@@ -122,7 +137,7 @@ export class SessionManager {
     session = {
       sessionDbId,
       contentSessionId: dbSession.content_session_id,
-      memorySessionId: null,  // Always start fresh - SDK will capture new ID
+      memorySessionId: rehydratedMemorySessionId,  // null for Claude SDK (re-captured); preserved for stateless providers
       project: dbSession.project,
       platformSource: dbSession.platform_source,
       userPrompt,

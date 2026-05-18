@@ -616,7 +616,7 @@ function mergeSettings(updates: Record<string, string>): boolean {
   }
 }
 
-type ProviderId = 'claude' | 'gemini' | 'openrouter' | 'ollama';
+type ProviderId = 'claude' | 'gemini' | 'openrouter' | 'ollama' | 'deepseek';
 type ClaudeAccessMode = 'subscription' | 'api-key';
 type ClaudeApiMode = 'direct' | 'gateway';
 
@@ -940,6 +940,19 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         persistClaudeProvider();
         return 'claude';
       }
+      if (options.provider === 'deepseek') {
+        const deepseekKey = (getSetting('CLAUDE_MEM_DEEPSEEK_API_KEY') as string | undefined) || '';
+        const deepseekModel = (getSetting('CLAUDE_MEM_DEEPSEEK_MODEL') as string | undefined) || 'deepseek-v4-flash';
+        const wrote = mergeSettings({
+          CLAUDE_MEM_PROVIDER: 'deepseek',
+          CLAUDE_MEM_DEEPSEEK_MODEL: deepseekModel,
+        });
+        if (wrote) log.info(`Saved provider=deepseek to ~/.claude-mem/settings.json`);
+        if (!deepseekKey) {
+          log.warn('Provider=deepseek requested non-interactively. Set CLAUDE_MEM_DEEPSEEK_API_KEY in settings.json or DEEPSEEK_API_KEY env var.');
+        }
+        return 'deepseek';
+      }
       if (options.provider === 'ollama') {
         const ollamaBaseUrl = getSetting('CLAUDE_MEM_OLLAMA_BASE_URL') || 'http://localhost:11434/v1';
         const ollamaModel = getSetting('CLAUDE_MEM_OLLAMA_MODEL') || 'phi4:14b';
@@ -1023,6 +1036,7 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
         { value: 'gemini', label: 'Gemini' },
         { value: 'openrouter', label: 'OpenRouter' },
         { value: 'ollama', label: 'Ollama (local)' },
+        { value: 'deepseek', label: 'DeepSeek' },
       ],
       initialValue: initialProvider,
     });
@@ -1041,6 +1055,46 @@ async function promptProvider(options: InstallOptions): Promise<ProviderId> {
   if (selectedProvider === 'ollama') {
     await configureOllamaProvider();
     return 'ollama';
+  }
+
+  if (selectedProvider === 'deepseek') {
+    const existingKey = getSetting('CLAUDE_MEM_DEEPSEEK_API_KEY') as string | undefined;
+    const existingModel = getSetting('CLAUDE_MEM_DEEPSEEK_MODEL') || 'deepseek-v4-flash';
+
+    let apiKey = (existingKey ?? '').trim();
+    if (!apiKey) {
+      const apiKeyResult = await p.password({
+        message: 'Paste your DeepSeek API key:',
+        mask: '*',
+        validate: (v?: string) => (!v || v.trim().length === 0) ? 'API key required' : undefined,
+      });
+      if (p.isCancel(apiKeyResult)) {
+        log.warn('API key prompt cancelled — falling back to Claude provider.');
+        persistClaudeProvider();
+        return 'claude';
+      }
+      apiKey = String(apiKeyResult).trim();
+    }
+
+    const modelResult = await p.text({
+      message: 'DeepSeek model:',
+      placeholder: 'deepseek-v4-flash',
+      defaultValue: existingModel,
+      validate: (v?: string) => (!v || v.trim().length === 0) ? 'Model required' : undefined,
+    });
+    if (p.isCancel(modelResult)) {
+      log.warn('DeepSeek model prompt cancelled — falling back to Claude provider.');
+      persistClaudeProvider();
+      return 'claude';
+    }
+
+    const wrote = mergeSettings({
+      CLAUDE_MEM_PROVIDER: 'deepseek',
+      CLAUDE_MEM_DEEPSEEK_API_KEY: apiKey,
+      CLAUDE_MEM_DEEPSEEK_MODEL: String(modelResult).trim(),
+    });
+    if (wrote) log.info('Saved DeepSeek configuration to ~/.claude-mem/settings.json');
+    return 'deepseek';
   }
 
   const providerLabel = selectedProvider === 'gemini' ? 'Gemini' : 'OpenRouter';
@@ -1157,7 +1211,7 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
 
 export interface InstallOptions {
   ide?: string;
-  provider?: 'claude' | 'gemini' | 'openrouter' | 'ollama';
+  provider?: 'claude' | 'gemini' | 'openrouter' | 'ollama' | 'deepseek';
   model?: string;
   noAutoStart?: boolean;
 }

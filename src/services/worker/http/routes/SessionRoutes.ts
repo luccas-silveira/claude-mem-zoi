@@ -11,6 +11,7 @@ import { ClaudeProvider } from '../../ClaudeProvider.js';
 import { GeminiProvider, isGeminiSelected, isGeminiAvailable } from '../../GeminiProvider.js';
 import { OpenRouterProvider, isOpenRouterSelected, isOpenRouterAvailable } from '../../OpenRouterProvider.js';
 import { OllamaProvider, isOllamaSelected, isOllamaAvailable } from '../../OllamaProvider.js';
+import { DeepSeekProvider, isDeepSeekSelected, isDeepSeekAvailable } from '../../DeepSeekProvider.js';
 import type { WorkerService } from '../../../worker-service.js';
 import { BaseRouteHandler } from '../BaseRouteHandler.js';
 import { SessionEventBroadcaster } from '../../events/SessionEventBroadcaster.js';
@@ -33,6 +34,7 @@ export class SessionRoutes extends BaseRouteHandler {
     private geminiAgent: GeminiProvider,
     private openRouterAgent: OpenRouterProvider,
     private ollamaAgent: OllamaProvider,
+    private deepseekAgent: DeepSeekProvider,
     private eventBroadcaster: SessionEventBroadcaster,
     private workerService: WorkerService,
     private completionHandler: SessionCompletionHandler,
@@ -40,13 +42,21 @@ export class SessionRoutes extends BaseRouteHandler {
     super();
   }
 
-  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider {
+  private getActiveAgent(): ClaudeProvider | GeminiProvider | OpenRouterProvider | OllamaProvider | DeepSeekProvider {
     if (isOllamaSelected()) {
       if (isOllamaAvailable()) {
         logger.debug('SESSION', 'Using Ollama agent');
         return this.ollamaAgent;
       } else {
         throw new Error('Ollama provider selected but not configured. Set CLAUDE_MEM_OLLAMA_BASE_URL and CLAUDE_MEM_OLLAMA_MODEL in settings.');
+      }
+    }
+    if (isDeepSeekSelected()) {
+      if (isDeepSeekAvailable()) {
+        logger.debug('SESSION', 'Using DeepSeek agent');
+        return this.deepseekAgent;
+      } else {
+        throw new Error('DeepSeek provider selected but no API key configured. Set CLAUDE_MEM_DEEPSEEK_API_KEY in settings or DEEPSEEK_API_KEY environment variable.');
       }
     }
     if (isOpenRouterSelected()) {
@@ -68,9 +78,12 @@ export class SessionRoutes extends BaseRouteHandler {
     return this.sdkAgent;
   }
 
-  private getSelectedProvider(): 'claude' | 'gemini' | 'openrouter' | 'ollama' {
+  private getSelectedProvider(): 'claude' | 'gemini' | 'openrouter' | 'ollama' | 'deepseek' {
     if (isOllamaSelected() && isOllamaAvailable()) {
       return 'ollama';
+    }
+    if (isDeepSeekSelected() && isDeepSeekAvailable()) {
+      return 'deepseek';
     }
     if (isOpenRouterSelected() && isOpenRouterAvailable()) {
       return 'openrouter';
@@ -104,7 +117,7 @@ export class SessionRoutes extends BaseRouteHandler {
 
   private startGeneratorWithProvider(
     session: ReturnType<typeof this.sessionManager.getSession>,
-    provider: 'claude' | 'gemini' | 'openrouter' | 'ollama',
+    provider: 'claude' | 'gemini' | 'openrouter' | 'ollama' | 'deepseek',
     source: string
   ): void {
     if (!session) return;
@@ -118,10 +131,14 @@ export class SessionRoutes extends BaseRouteHandler {
 
     const agent = provider === 'ollama'
       ? this.ollamaAgent
-      : (provider === 'openrouter' ? this.openRouterAgent : (provider === 'gemini' ? this.geminiAgent : this.sdkAgent));
+      : (provider === 'deepseek'
+          ? this.deepseekAgent
+          : (provider === 'openrouter' ? this.openRouterAgent : (provider === 'gemini' ? this.geminiAgent : this.sdkAgent)));
     const agentName = provider === 'ollama'
       ? 'Ollama'
-      : (provider === 'openrouter' ? 'OpenRouter' : (provider === 'gemini' ? 'Gemini' : 'Claude SDK'));
+      : (provider === 'deepseek'
+          ? 'DeepSeek'
+          : (provider === 'openrouter' ? 'OpenRouter' : (provider === 'gemini' ? 'Gemini' : 'Claude SDK')));
 
     const pendingStore = this.sessionManager.getPendingMessageStore();
     const actualQueueDepth = pendingStore.getPendingCount(session.sessionDbId);

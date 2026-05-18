@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Header } from './components/Header';
 import { Feed } from './components/Feed';
 import { ContextSettingsModal } from './components/ContextSettingsModal';
 import { LogsDrawer } from './components/LogsModal';
@@ -9,6 +8,7 @@ import { useSettings } from './hooks/useSettings';
 import { useStats } from './hooks/useStats';
 import { usePagination } from './hooks/usePagination';
 import { useTheme } from './hooks/useTheme';
+import { useSpinningFavicon } from './hooks/useSpinningFavicon';
 import { Observation, Summary, UserPrompt } from './types';
 import { mergeAndDeduplicateByProject } from './utils/data';
 
@@ -21,11 +21,14 @@ export function App() {
   const [paginatedSummaries, setPaginatedSummaries] = useState<Summary[]>([]);
   const [paginatedPrompts, setPaginatedPrompts] = useState<UserPrompt[]>([]);
 
-  const { observations, summaries, prompts, projects, isProcessing, queueDepth, isConnected } = useSSE();
+  const { observations, summaries, prompts, projects, isProcessing } = useSSE();
   const { settings, saveSettings, isSaving, saveStatus } = useSettings();
   const { refreshStats } = useStats();
-  const { preference, setThemePreference } = useTheme();
+  useTheme();
   const pagination = usePagination(currentFilter);
+
+  // Keep the favicon spinning during processing now that Header no longer renders.
+  useSpinningFavicon(isProcessing);
 
   const matchesSelection = useCallback((item: { project: string }) => {
     return !currentFilter || item.project === currentFilter;
@@ -100,30 +103,23 @@ export function App() {
 
   return (
     <>
-      <Header
-        isConnected={isConnected}
-        projects={projects}
-        currentFilter={currentFilter}
-        onFilterChange={setCurrentFilter}
-        isProcessing={isProcessing}
-        queueDepth={queueDepth}
-        themePreference={preference}
-        onThemeChange={setThemePreference}
-        onContextPreviewToggle={toggleContextPreview}
-        onShowHelp={() => {
-          setStoredWelcomeDismissed(false);
-          setWelcomeDismissed(false);
-        }}
-      />
+      <div className={`viewer-split ${logsModalOpen ? 'console-open' : ''}`}>
+        {logsModalOpen && (
+          <LogsDrawer
+            isOpen={logsModalOpen}
+            onClose={toggleLogsModal}
+          />
+        )}
 
-      <Feed
-        observations={allObservations}
-        summaries={allSummaries}
-        prompts={allPrompts}
-        onLoadMore={handleLoadMore}
-        isLoading={pagination.observations.isLoading || pagination.summaries.isLoading || pagination.prompts.isLoading}
-        hasMore={pagination.observations.hasMore || pagination.summaries.hasMore || pagination.prompts.hasMore}
-      />
+        <Feed
+          observations={allObservations}
+          summaries={allSummaries}
+          prompts={allPrompts}
+          onLoadMore={handleLoadMore}
+          isLoading={pagination.observations.isLoading || pagination.summaries.isLoading || pagination.prompts.isLoading}
+          hasMore={pagination.observations.hasMore || pagination.summaries.hasMore || pagination.prompts.hasMore}
+        />
+      </div>
 
       {!welcomeDismissed && (
         <WelcomeCard onDismiss={() => setWelcomeDismissed(true)} />
@@ -139,6 +135,18 @@ export function App() {
       />
 
       <button
+        className="floating-settings-btn"
+        onClick={toggleContextPreview}
+        title="Settings"
+        aria-label="Settings"
+      >
+        <svg className="settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </button>
+
+      <button
         className="console-toggle-btn"
         onClick={toggleLogsModal}
         title="Toggle Console"
@@ -148,11 +156,6 @@ export function App() {
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
       </button>
-
-      <LogsDrawer
-        isOpen={logsModalOpen}
-        onClose={toggleLogsModal}
-      />
     </>
   );
 }

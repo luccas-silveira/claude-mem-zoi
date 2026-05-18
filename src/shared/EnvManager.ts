@@ -29,6 +29,7 @@ export interface ClaudeMemEnv {
   ANTHROPIC_AUTH_TOKEN?: string;
   GEMINI_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
 }
 
 function parseEnvFile(content: string): Record<string, string> {

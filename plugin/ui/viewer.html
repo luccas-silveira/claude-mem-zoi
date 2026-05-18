@@ -3082,30 +3082,82 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
       border-color: var(--color-bg-button-hover);
     }
 
-    /* Console Drawer - Chrome DevTools Style */
+    /* Viewer split layout: console on the left, feed on the right */
+    .viewer-split {
+      display: flex;
+      flex-direction: row;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .viewer-split > .feed {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    /* Floating settings cog (replaces the entire header) */
+    .floating-settings-btn {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--color-bg-button);
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      transition: background var(--duration-fast) var(--ease-out),
+                  transform var(--duration-fast) var(--ease-out),
+                  box-shadow var(--duration-fast) var(--ease-out);
+      z-index: 1100;
+    }
+
+    .floating-settings-btn:hover {
+      background: var(--color-bg-button-hover);
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .floating-settings-btn .settings-icon {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Console Drawer - ZOI DS aligned (left-side panel) */
     .console-toggle-btn {
       position: fixed;
       bottom: 20px;
       left: 20px;
       width: 48px;
       height: 48px;
-      border-radius: 50%;
-      background: var(--color-bg-button);
+      border-radius: var(--radius-full);
+      background: var(--action-primary-bg);
       border: none;
-      color: white;
+      color: var(--action-primary-fg);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      transition: all var(--duration-fast) var(--ease-out);
       z-index: 999;
     }
 
     .console-toggle-btn:hover {
-      background: var(--color-bg-button-hover);
+      background: var(--action-primary-hover);
       transform: scale(1.05);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    }
+
+    .console-toggle-btn:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
     }
 
     .console-toggle-btn svg {
@@ -3114,85 +3166,106 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
     }
 
     .console-drawer {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: var(--color-bg-primary);
-      border-top: 1px solid var(--color-border-primary);
-      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-      z-index: 1000;
+      position: relative;
+      flex: 0 0 40%;
+      min-width: 320px;
+      max-width: 720px;
+      height: 100vh;
+      background: var(--bg-page);
+      border-right: 1px solid var(--border-default);
+      z-index: 1;
       display: flex;
       flex-direction: column;
+      animation: consoleSlideInLeft var(--duration-normal) var(--ease-out);
     }
 
+    @keyframes consoleSlideInLeft {
+      from {
+        transform: translateX(-8px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* In the left-panel layout the top resize handle is meaningless; hide it. */
     .console-resize-handle {
+      display: none;
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       height: 6px;
       cursor: ns-resize;
-      display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .console-resize-handle:hover .console-resize-bar {
-      background: var(--color-bg-button);
+      background: var(--green-500);
     }
 
     .console-resize-bar {
       width: 40px;
       height: 3px;
-      border-radius: 2px;
-      background: var(--color-border-primary);
-      transition: background 0.2s ease;
+      border-radius: var(--radius-sm);
+      background: var(--border-default);
+      transition: background var(--duration-fast) var(--ease-out);
     }
 
     .console-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--color-border-primary);
-      background: var(--color-bg-header);
-      margin-top: 6px;
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-default);
+      background: var(--bg-surface);
+      font-family: var(--font-display);
+      font-weight: 600;
+      letter-spacing: -0.01em;
     }
 
     .console-tabs {
       display: flex;
-      gap: 4px;
+      gap: var(--space-1);
     }
 
     .console-tab {
-      padding: 4px 12px;
-      font-size: 12px;
-      color: var(--color-text-secondary);
+      padding: var(--space-1) var(--space-3);
+      font-family: var(--font-display);
+      font-size: 13px;
+      color: var(--text-secondary);
       background: transparent;
       border: none;
       cursor: pointer;
       border-bottom: 2px solid transparent;
+      transition: all var(--duration-fast) var(--ease-out);
+    }
+
+    .console-tab:hover {
+      color: var(--text-primary);
     }
 
     .console-tab.active {
-      color: var(--color-text-primary);
-      border-bottom-color: var(--color-bg-button);
-      font-weight: 500;
+      color: var(--text-primary);
+      border-bottom-color: var(--green-500);
+      font-weight: 600;
     }
 
     .console-controls {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
     }
 
     .console-auto-refresh {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: var(--space-1);
       font-size: 11px;
-      color: var(--color-text-secondary);
+      color: var(--text-secondary);
       cursor: pointer;
       user-select: none;
     }
@@ -3204,17 +3277,17 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
     .console-control-btn {
       background: transparent;
       border: none;
-      color: var(--color-text-secondary);
+      color: var(--text-secondary);
       cursor: pointer;
-      padding: 4px 8px;
+      padding: var(--space-1) var(--space-2);
       font-size: 14px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       transition: all var(--duration-fast) var(--ease-out);
     }
 
     .console-control-btn:hover {
-      background: var(--color-bg-card-hover);
-      color: var(--color-text-primary);
+      background: var(--bg-surface);
+      color: var(--text-primary);
     }
 
     .console-control-btn:disabled {
@@ -3223,57 +3296,59 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
     }
 
     .console-clear-btn:hover {
-      color: var(--color-accent-error);
+      color: var(--system-error);
     }
 
     .console-content {
       flex: 1;
       overflow: auto;
-      background: var(--color-bg-primary);
+      background: var(--bg-page);
     }
 
     .console-logs {
       margin: 0;
-      padding: 8px 12px;
-      font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+      padding: var(--space-3) var(--space-4);
+      font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
       font-size: 11px;
-      line-height: 1.5;
-      color: var(--color-text-primary);
+      line-height: 1.55;
+      color: var(--text-primary);
       white-space: pre-wrap;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
 
     .console-error {
-      padding: 8px 12px;
+      padding: var(--space-2) var(--space-4);
       background: rgba(239, 68, 68, 0.08);
-      border-bottom: 1px solid var(--color-accent-error);
-      color: var(--color-accent-error);
+      border-bottom: 1px solid var(--system-error);
+      color: var(--system-error);
       font-size: 11px;
-      font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+      font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+      border-radius: 0;
     }
 
     /* Console Filter Bar */
     .console-filters {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      padding: 8px 12px;
-      background: var(--color-bg-secondary);
-      border-bottom: 1px solid var(--color-border-primary);
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-4);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-default);
     }
 
     .console-filter-section {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
       flex-wrap: wrap;
     }
 
     .console-filter-label {
+      font-family: var(--font-display);
       font-size: 10px;
       font-weight: 600;
-      color: var(--color-text-muted);
+      color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       white-space: nowrap;
@@ -3282,37 +3357,36 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
     .console-filter-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: var(--space-1);
       align-items: center;
     }
 
     .console-filter-chip {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-3);
       font-size: 11px;
       font-weight: 500;
-      background: var(--color-bg-card);
-      border: 1px solid var(--color-border-primary);
-      border-radius: 4px;
-      color: var(--color-text-secondary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-full);
+      color: var(--text-secondary);
       cursor: pointer;
       transition: all var(--duration-fast) var(--ease-out);
       white-space: nowrap;
     }
 
     .console-filter-chip:hover {
-      background: var(--color-bg-card-hover);
-      border-color: var(--chip-color, var(--color-border-hover));
-      color: var(--color-text-primary);
+      background: var(--bg-input);
+      border-color: var(--border-active);
+      color: var(--text-primary);
     }
 
     .console-filter-chip.active {
-      background: var(--chip-color, var(--color-accent-primary));
-      border-color: var(--chip-color, var(--color-accent-primary));
-      color: white;
-      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+      background: var(--chip-color, var(--green-500));
+      border-color: var(--chip-color, var(--green-500));
+      color: var(--text-inverse);
     }
 
     .console-filter-chip.active:hover {
@@ -3327,45 +3401,45 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
       height: 24px;
       font-size: 12px;
       background: transparent;
-      border: 1px solid var(--color-border-primary);
-      border-radius: 4px;
-      color: var(--color-text-muted);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-tertiary);
       cursor: pointer;
       transition: all var(--duration-fast) var(--ease-out);
     }
 
     .console-filter-action:hover {
-      background: var(--color-bg-card-hover);
-      border-color: var(--color-border-hover);
-      color: var(--color-text-primary);
+      background: var(--bg-surface);
+      border-color: var(--border-active);
+      color: var(--text-primary);
     }
 
     /* Log Line Styles */
     .log-line {
       display: block;
       padding: 2px 0;
-      font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+      font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
       font-size: 11px;
-      line-height: 1.5;
+      line-height: 1.55;
       white-space: pre-wrap;
       word-wrap: break-word;
     }
 
     .log-line-raw {
-      color: var(--color-text-secondary);
+      color: var(--text-secondary);
       opacity: 0.8;
     }
 
     .log-line-empty {
-      color: var(--color-text-muted);
+      color: var(--text-tertiary);
       font-style: italic;
       padding: 20px 0;
       text-align: center;
     }
 
     .log-timestamp {
-      color: var(--color-text-muted);
-      opacity: 0.7;
+      color: var(--text-tertiary);
+      font-weight: 500;
     }
 
     .log-level {
@@ -3377,7 +3451,7 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
     }
 
     .log-correlation {
-      color: var(--color-accent-primary);
+      color: var(--green-500);
       opacity: 0.9;
     }
 
@@ -3385,9 +3459,44 @@ p { margin-top: 0; margin-bottom: var(--space-4); }
       color: inherit;
     }
 
+    /* Log line level color mapping (ZOI status tokens) */
+    .log-line.error { color: var(--system-error); }
+    .log-line.warn { color: var(--system-warning); }
+    .log-line.info { color: var(--text-secondary); }
+    .log-line.success { color: var(--system-success); }
+    .log-line.debug { color: var(--text-tertiary); }
+
     /* Log Level Colors in Dark Mode */
     [data-theme="dark"] .log-line-raw {
       color: #8b949e;
+    }
+
+    /* Narrow viewports: fall back to overlay console so the feed isn't crushed. */
+    @media (max-width: 768px) {
+      .viewer-split {
+        display: block;
+        height: 100vh;
+      }
+
+      .viewer-split.console-open > .feed {
+        display: none;
+      }
+
+      .console-drawer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        flex: none;
+        width: 100vw;
+        max-width: none;
+        min-width: 0;
+        height: 100vh;
+        border-right: none;
+        box-shadow: none;
+        z-index: 1000;
+      }
     }
 
     /* Responsive adjustments for filter bar */

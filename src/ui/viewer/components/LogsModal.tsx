@@ -247,29 +247,28 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
 
   const getLineStyle = (line: ParsedLogLine): React.CSSProperties => {
     const levelConfig = LOG_LEVELS.find(l => l.key === line.level);
-    const componentConfig = LOG_COMPONENTS.find(c => c.key === line.component);
 
-    let color = 'var(--color-text-primary)';
-    let fontWeight = 'normal';
+    let color = 'var(--text-primary)';
+    const fontWeight = 'normal';
     let backgroundColor = 'transparent';
 
     if (line.level === 'ERROR') {
-      color = '#f85149';
-      backgroundColor = 'rgba(248, 81, 73, 0.1)';
+      color = 'var(--system-error)';
+      backgroundColor = 'color-mix(in srgb, var(--system-error) 10%, transparent)';
     } else if (line.level === 'WARN') {
-      color = '#d29922';
-      backgroundColor = 'rgba(210, 153, 34, 0.05)';
+      color = 'var(--system-warning)';
+      backgroundColor = 'color-mix(in srgb, var(--system-warning) 6%, transparent)';
     } else if (line.isSpecial === 'success') {
-      color = '#3fb950';
+      color = 'var(--system-success)';
     } else if (line.isSpecial === 'failure') {
-      color = '#f85149';
+      color = 'var(--system-error)';
     } else if (line.isSpecial === 'happyPath') {
-      color = '#d29922';
+      color = 'var(--system-warning)';
     } else if (levelConfig) {
       color = levelConfig.color;
     }
 
-    return { color, fontWeight, backgroundColor, padding: '1px 0', borderRadius: '2px' };
+    return { color, fontWeight, backgroundColor, padding: '1px 0', borderRadius: 'var(--radius-sm)' };
   };
 
   const renderLogLine = (line: ParsedLogLine, index: number) => {
@@ -308,7 +307,7 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
   };
 
   return (
-    <div className="console-drawer" style={{ height: `${height}px` }}>
+    <div className="console-drawer">
       <div
         className="console-resize-handle"
         onMouseDown={handleMouseDown}

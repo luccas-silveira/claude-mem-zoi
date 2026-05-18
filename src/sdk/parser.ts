@@ -115,10 +115,10 @@ function parseObservationBlocks(text: string, correlationId?: string | number): 
       if (validTypes.includes(type.trim())) {
         finalType = type.trim();
       } else {
-        logger.error('PARSER', `Invalid observation type: ${type}, using "${fallbackType}"`, { correlationId });
+        logger.warn('PARSER', `Invalid observation type: ${type}, using "${fallbackType}"`, { correlationId });
       }
     } else {
-      logger.error('PARSER', `Observation missing type field, using "${fallbackType}"`, { correlationId });
+      logger.warn('PARSER', `Observation missing type field, using "${fallbackType}"`, { correlationId });
     }
 
     const cleanedConcepts = concepts.filter(c => c !== finalType);

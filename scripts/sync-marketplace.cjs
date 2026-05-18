@@ -115,7 +115,27 @@ function detectInstalledVersion(buildVersion) {
   return { installedVersion, installedPath };
 }
 
-const installedMismatch = detectInstalledVersion(getPluginVersion());
+function detectPinnedCacheVersion(buildVersion) {
+  // Claude Code pins claude-mem to a specific cache dir via installed_plugins.json.
+  // If that pinned version differs from the build version, we MUST mirror to it
+  // or Claude Code keeps loading stale assets (skills, viewer.html, etc.).
+  const installedPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
+  if (!existsSync(installedPath)) return null;
+  try {
+    const j = JSON.parse(readFileSync(installedPath, 'utf8'));
+    const entries = (j.plugins && j.plugins['claude-mem@thedotmack']) || j['claude-mem@thedotmack'];
+    if (!Array.isArray(entries) || !entries.length) return null;
+    const pinnedVersion = entries[0].version;
+    if (!pinnedVersion || pinnedVersion === buildVersion) return null;
+    return { installedVersion: pinnedVersion, installedPath: entries[0].installPath };
+  } catch {
+    return null;
+  }
+}
+
+const installedMismatch =
+  detectInstalledVersion(getPluginVersion()) ||
+  detectPinnedCacheVersion(getPluginVersion());
 if (installedMismatch) {
   console.log('');
   console.log('\x1b[33m%s\x1b[0m', 'Version mismatch detected:');

@@ -440,6 +440,7 @@ export function ContextSettingsModal({
                   <option value="gemini">Gemini (uses API key)</option>
                   <option value="openrouter">OpenRouter (multi-model)</option>
                   <option value="ollama">Ollama (local)</option>
+                  <option value="deepseek">DeepSeek</option>
                 </select>
               </FormField>
 
@@ -579,6 +580,44 @@ export function ContextSettingsModal({
                       value={formState.CLAUDE_MEM_OLLAMA_NUM_CTX || '32768'}
                       onChange={(e) => updateSetting('CLAUDE_MEM_OLLAMA_NUM_CTX', e.target.value)}
                       placeholder="32768"
+                    />
+                  </FormField>
+                </>
+              )}
+
+              {formState.CLAUDE_MEM_PROVIDER === 'deepseek' && (
+                <>
+                  <FormField
+                    label="DeepSeek API Key"
+                    tooltip="Your DeepSeek API key (or set DEEPSEEK_API_KEY env var)"
+                  >
+                    <input
+                      type="password"
+                      value={formState.CLAUDE_MEM_DEEPSEEK_API_KEY || ''}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_DEEPSEEK_API_KEY', e.target.value)}
+                      placeholder="Enter DeepSeek API key..."
+                    />
+                  </FormField>
+                  <FormField
+                    label="DeepSeek Model"
+                    tooltip="Model identifier from DeepSeek (e.g., deepseek-v4-flash)"
+                  >
+                    <input
+                      type="text"
+                      value={formState.CLAUDE_MEM_DEEPSEEK_MODEL || 'deepseek-v4-flash'}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_DEEPSEEK_MODEL', e.target.value)}
+                      placeholder="deepseek-v4-flash"
+                    />
+                  </FormField>
+                  <FormField
+                    label="DeepSeek Base URL"
+                    tooltip="OpenAI-compatible chat completions endpoint base URL"
+                  >
+                    <input
+                      type="text"
+                      value={formState.CLAUDE_MEM_DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}
+                      onChange={(e) => updateSetting('CLAUDE_MEM_DEEPSEEK_BASE_URL', e.target.value)}
+                      placeholder="https://api.deepseek.com/v1"
                     />
                   </FormField>
                 </>
