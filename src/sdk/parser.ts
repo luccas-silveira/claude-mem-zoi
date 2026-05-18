@@ -110,12 +110,57 @@ function parseObservationBlocks(text: string, correlationId?: string | number): 
     const mode = ModeManager.getInstance().getActiveMode();
     const validTypes = mode.observation_types.map(t => t.id);
     const fallbackType = validTypes[0];
+
+    // Aliases: small/fast LLMs (deepseek-v4-flash, gemini-flash, etc.) freelance
+    // observation types despite prompt enumeration. Map common slips onto the
+    // closest valid type before falling back to the noisy WARN log.
+    const TYPE_ALIASES: Record<string, string> = {
+      state: 'change',
+      action: 'change',
+      modification: 'change',
+      update: 'change',
+      edit: 'change',
+      fix: 'bugfix',
+      bug: 'bugfix',
+      add: 'feature',
+      new: 'feature',
+      finding: 'discovery',
+      observation: 'discovery',
+      note: 'discovery',
+      info: 'discovery',
+      security: 'security_note',
+      vulnerability: 'security_alert',
+      test: 'feature',
+      tests: 'feature',
+      testing: 'feature',
+      verification: 'discovery',
+      validation: 'discovery',
+      check: 'discovery',
+      research: 'discovery',
+      investigation: 'discovery',
+      analysis: 'discovery',
+      config: 'change',
+      configuration: 'change',
+      setup: 'change',
+      install: 'change',
+      cleanup: 'refactor',
+      improvement: 'refactor',
+      enhancement: 'feature',
+    };
+
     let finalType = fallbackType;
     if (type) {
-      if (validTypes.includes(type.trim())) {
-        finalType = type.trim();
+      const trimmed = type.trim();
+      if (validTypes.includes(trimmed)) {
+        finalType = trimmed;
       } else {
-        logger.warn('PARSER', `Invalid observation type: ${type}, using "${fallbackType}"`, { correlationId });
+        const aliased = TYPE_ALIASES[trimmed.toLowerCase()];
+        if (aliased && validTypes.includes(aliased)) {
+          finalType = aliased;
+          logger.debug('PARSER', `Aliased observation type: ${trimmed} -> ${aliased}`, { correlationId });
+        } else {
+          logger.warn('PARSER', `Invalid observation type: ${type}, using "${fallbackType}"`, { correlationId });
+        }
       }
     } else {
       logger.warn('PARSER', `Observation missing type field, using "${fallbackType}"`, { correlationId });

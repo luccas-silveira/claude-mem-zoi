@@ -501,7 +501,9 @@ export class DeepSeekProvider {
     if (tokensUsed) {
       const inputTokens = data.usage?.prompt_tokens || 0;
       const outputTokens = data.usage?.completion_tokens || 0;
-      const estimatedCost = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);
+      // DeepSeek pricing (deepseek-v4-flash, USD per 1M tokens, off-peak rates).
+      // Cache-hit input is ~5x cheaper; we approximate using miss rate for safety.
+      const estimatedCost = (inputTokens / 1000000 * 0.27) + (outputTokens / 1000000 * 1.10);
 
       logger.info('SDK', 'DeepSeek API usage', {
         model,
@@ -512,7 +514,9 @@ export class DeepSeekProvider {
         messagesInContext: truncatedHistory.length
       });
 
-      if (tokensUsed > 50000) {
+      // DeepSeek pricing ~12x cheaper than Claude; bump warn threshold accordingly
+      // to avoid alarmism when 60k-token calls cost ~$0.02.
+      if (tokensUsed > 200000) {
         logger.warn('SDK', 'High token usage detected - consider reducing context', {
           totalTokens: tokensUsed,
           estimatedCost: estimatedCost.toFixed(4)
