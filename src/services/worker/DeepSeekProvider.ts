@@ -339,7 +339,9 @@ export class DeepSeekProvider {
     }, mode);
 
     session.conversationHistory.push({ role: 'user', content: summaryPrompt });
-    const summaryResponse = await this.queryDeepSeekMultiTurn(session.conversationHistory, apiKey, model, baseUrl);
+    // Summary is end-of-session, low volume, high value — enable thinking mode
+    // for Pro-tier coherence on Flash pricing.
+    const summaryResponse = await this.queryDeepSeekMultiTurn(session.conversationHistory, apiKey, model, baseUrl, { useThinking: true });
 
     let tokensUsed = 0;
     if (summaryResponse.content) {
@@ -418,8 +420,10 @@ export class DeepSeekProvider {
     history: ConversationMessage[],
     apiKey: string,
     model: string,
-    baseUrl: string
+    baseUrl: string,
+    options: { useThinking?: boolean } = {}
   ): Promise<{ content: string; tokensUsed?: number }> {
+    const useThinking = options.useThinking === true;
     const truncatedHistory = this.truncateHistory(history);
     const messages = this.conversationToOpenAIMessages(truncatedHistory);
     const totalChars = truncatedHistory.reduce((sum, m) => sum + m.content.length, 0);
@@ -448,8 +452,10 @@ export class DeepSeekProvider {
             model,
             messages,
             temperature: 0.3,
-            max_tokens: 4096,
-            thinking: { type: 'disabled' },
+            // Thinking-on uses output tokens for reasoning before content;
+            // bump max_tokens so content isn't truncated by reasoning budget.
+            max_tokens: useThinking ? 16384 : 4096,
+            thinking: useThinking ? { type: 'enabled' } : { type: 'disabled' },
           }),
           signal: attemptSignal,
         });
