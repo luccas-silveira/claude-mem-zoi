@@ -20,10 +20,11 @@ bun install
 bun run build
 
 # 3. Register the local clone as a Codex marketplace
-codex plugin marketplace add claude-mem ~/Code/claude-mem-zoi
+# Codex names the marketplace automatically (e.g., "claude-mem-local")
+codex plugin marketplace add ~/Code/claude-mem-zoi
 
-# 4. Install the plugin
-codex plugin add claude-mem --marketplace claude-mem
+# 4. Install the plugin (use the marketplace name shown after step 3)
+codex plugin add claude-mem --marketplace claude-mem-local
 ```
 
 ## Trust prompt on first run
@@ -64,8 +65,8 @@ If you have older observations that were keyed by a subdirectory's basename (bec
 ## Uninstalling
 
 ```bash
-codex plugin remove claude-mem
-codex plugin marketplace remove claude-mem
+codex plugin remove claude-mem --marketplace claude-mem-local
+codex plugin marketplace remove claude-mem-local
 ```
 
 This does not touch `~/.claude-mem/` data. Claude Code's installation is independent and unaffected.
@@ -73,5 +74,5 @@ This does not touch `~/.claude-mem/` data. Claude Code's installation is indepen
 ## Troubleshooting
 
 - **Hooks silently do nothing.** Check `~/.claude-mem/logs/worker.log`. Most common cause is the provider being out of credit (status 402) or unreachable.
-- **`codex mcp list` shows the server as disabled.** Re-run `codex plugin add claude-mem --marketplace claude-mem` to refresh the registration.
-- **Codex picks up a stale plugin version after you edit the fork.** Run `codex plugin marketplace upgrade claude-mem` then `codex plugin add claude-mem --marketplace claude-mem` again.
+- **`codex mcp list` shows the server as disabled.** Re-run `codex plugin add claude-mem --marketplace claude-mem-local` to refresh the registration.
+- **Codex picks up a stale plugin version after you edit the fork.** Run `codex plugin marketplace upgrade claude-mem-local` then `codex plugin add claude-mem --marketplace claude-mem-local` again.
