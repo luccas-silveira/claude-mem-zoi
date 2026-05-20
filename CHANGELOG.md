@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [12.7.4-zoi.1] - 2026-05-20
+
+### Added
+- Codex CLI plugin support: `.codex-plugin/.mcp.json` with relative paths so Codex can launch the MCP server.
+- Git-root project keying in `getProjectName` so Claude Code and Codex sessions invoked from different subdirectories of the same repo share a memory bucket.
+
+### Changed
+- `getProjectContext.allProjects` now includes both the git-root basename and the legacy `basename(cwd)` key, allowing reads to transparently surface observations written under the older keying scheme.
+- `plugin/hooks/codex-hooks.json` uses relative `./scripts/...` paths instead of `${CLAUDE_PLUGIN_ROOT}` indirection so commands resolve under Codex 0.131.0's hook execution model.
+
+### Notes
+- Fork-specific pre-release suffix `-zoi.1` to avoid colliding with upstream's `13.x` cache pin in `~/.claude/plugins/installed_plugins.json`.
+
 ## [12.7.2] - 2026-05-06
 
 ### Fixed
