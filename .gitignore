@@ -24,6 +24,7 @@ Auto Run Docs/
 src/ui/viewer.html
 
 .mcp.json
+!plugin/.codex-plugin/.mcp.json
 .cursor/
 
 .idea/

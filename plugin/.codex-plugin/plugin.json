@@ -23,7 +23,7 @@
     "nodejs"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./.codex-plugin/.mcp.json",
   "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "claude-mem",
