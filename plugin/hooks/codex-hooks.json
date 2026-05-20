@@ -7,17 +7,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CLAUDE_MEM_CODEX_HOOK=1 node ./scripts/version-check.js",
+            "command": "CLAUDE_MEM_CODEX_HOOK=1 node \"${CLAUDE_PLUGIN_ROOT}/scripts/version-check.js\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs start",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" start",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs hook codex context",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" hook codex context",
             "timeout": 60,
             "statusMessage": "Loading claude-mem context"
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs hook codex session-init",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" hook codex session-init",
             "timeout": 60
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs hook codex file-context",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" hook codex file-context",
             "timeout": 30
           }
         ]
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs hook codex observation",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" hook codex observation",
             "timeout": 120
           }
         ]
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./scripts/bun-runner.js ./scripts/worker-service.cjs hook codex summarize",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/bun-runner.js\" \"${CLAUDE_PLUGIN_ROOT}/scripts/worker-service.cjs\" hook codex summarize",
             "timeout": 60
           }
         ]

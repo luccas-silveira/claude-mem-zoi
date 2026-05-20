@@ -21,16 +21,21 @@ describe('Codex hooks path resolution', () => {
     expect(allCommands.length).toBeGreaterThan(0);
   });
 
-  it('no command references CLAUDE_PLUGIN_ROOT or PLUGIN_ROOT env vars', () => {
+  it('every command references ${CLAUDE_PLUGIN_ROOT} for script paths', () => {
     for (const cmd of allCommands) {
-      expect(cmd).not.toContain('CLAUDE_PLUGIN_ROOT');
-      expect(cmd).not.toContain('PLUGIN_ROOT');
+      expect(cmd).toContain('${CLAUDE_PLUGIN_ROOT}/scripts/');
     }
   });
 
-  it('every command uses a relative path beginning with ./', () => {
+  it('no command uses bare ./ relative paths (Codex hooks run from project cwd, not plugin dir)', () => {
     for (const cmd of allCommands) {
-      expect(cmd).toMatch(/(?:^|\s)\.\//);
+      expect(cmd).not.toMatch(/(?:^|\s)\.\/scripts\//);
+    }
+  });
+
+  it('no command uses legacy ${PLUGIN_ROOT:-...} fallback indirection', () => {
+    for (const cmd of allCommands) {
+      expect(cmd).not.toContain(':-$PLUGIN_ROOT');
     }
   });
 });
