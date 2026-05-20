@@ -19,6 +19,13 @@ const EVENT_NAMES = new Set<CodexEventName>([
   'Stop',
 ]);
 
+// suppressOutput is only supported by these events in Codex 0.131.0+
+const SUPPRESS_OUTPUT_EVENTS = new Set<CodexEventName>([
+  'SessionStart',
+  'UserPromptSubmit',
+  'Stop',
+]);
+
 function eventName(value: unknown): CodexEventName | undefined {
   return typeof value === 'string' && EVENT_NAMES.has(value as CodexEventName)
     ? value as CodexEventName
@@ -43,10 +50,13 @@ function cloneToolInput(toolInput: unknown): unknown {
   return toolInput;
 }
 
-function buildBaseOutput(result: HookResult): Record<string, unknown> {
+function buildBaseOutput(result: HookResult, hookEvent?: CodexEventName): Record<string, unknown> {
   const output: Record<string, unknown> = {};
   if (result.continue !== undefined) output.continue = result.continue;
-  if (result.suppressOutput !== undefined) output.suppressOutput = result.suppressOutput;
+  // suppressOutput is only supported on SessionStart, UserPromptSubmit, Stop (Codex 0.131.0+)
+  if (result.suppressOutput !== undefined && (!hookEvent || SUPPRESS_OUTPUT_EVENTS.has(hookEvent))) {
+    output.suppressOutput = result.suppressOutput;
+  }
   if (result.systemMessage) output.systemMessage = result.systemMessage;
   if (result.decision === 'block') output.decision = 'block';
   if (result.reason) output.reason = result.reason;
@@ -54,7 +64,7 @@ function buildBaseOutput(result: HookResult): Record<string, unknown> {
 }
 
 function inferOutputEvent(result: HookResult): CodexEventName | undefined {
-  return eventName(result.hookSpecificOutput?.hookEventName);
+  return eventName(result.hookSpecificOutput?.hookEventName) ?? eventName(result._inputEventName);
 }
 
 export const codexAdapter: PlatformAdapter = {
@@ -105,9 +115,9 @@ export const codexAdapter: PlatformAdapter = {
 
   formatOutput(result): unknown {
     const r = result ?? {};
-    const output = buildBaseOutput(r);
-    const hookSpecific = r.hookSpecificOutput;
     const outputEvent = inferOutputEvent(r);
+    const output = buildBaseOutput(r, outputEvent);
+    const hookSpecific = r.hookSpecificOutput;
 
     if (!hookSpecific || !outputEvent || outputEvent === 'Stop') {
       return output;

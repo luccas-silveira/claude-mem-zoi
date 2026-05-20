@@ -51,8 +51,12 @@ async function executeHookPipeline(
 ): Promise<number> {
   const rawInput = await readJsonFromStdin();
   const input = adapter.normalizeInput(rawInput);
-  input.platform = platform;  
+  input.platform = platform;
   const result = await handler.execute(input);
+  // Propagate the raw hook event name so adapters can make event-aware decisions (e.g. suppress suppressOutput on PreToolUse/PostToolUse)
+  if (rawInput && typeof rawInput === 'object' && 'hook_event_name' in (rawInput as object)) {
+    result._inputEventName = (rawInput as Record<string, unknown>).hook_event_name as string | undefined;
+  }
   const output = adapter.formatOutput(result);
 
   console.log(JSON.stringify(output));

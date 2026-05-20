@@ -34,6 +34,8 @@ export interface HookResult {
   decision?: 'block' | 'approve';
   reason?: string;
   exitCode?: number;
+  /** Internal: the originating platform event name (e.g. 'PreToolUse'). Set by hook-command before formatOutput. */
+  _inputEventName?: string;
 }
 
 export interface PlatformAdapter {

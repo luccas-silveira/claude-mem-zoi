@@ -795,6 +795,12 @@ async function main() {
   switch (command) {
     case 'start': {
       const result = await ensureWorkerStarted(port);
+      // When invoked as a Codex hook, emit valid SessionStart JSON instead of
+      // the extended status output (which Codex rejects as invalid JSON schema).
+      if (process.env.CLAUDE_MEM_CODEX_HOOK === '1') {
+        process.stdout.write(JSON.stringify({ continue: true }) + '\n');
+        process.exit(0);
+      }
       if (result === 'dead') {
         exitWithStatus('error', 'Failed to start worker');
       } else {
