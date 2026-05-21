@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const { execSync } = require('child_process');
-const { existsSync, readFileSync } = require('fs');
+const { existsSync, readFileSync, writeFileSync } = require('fs');
 const path = require('path');
 const os = require('os');
 
@@ -190,6 +190,29 @@ try {
       `rsync -av --delete --exclude=.git ${pluginGitignoreExcludes} plugin/ "${INSTALLED_CACHE_PATH}/"`,
       { stdio: 'inherit' }
     );
+    // Realign manifest version fields to the install-record pin so Claude Code
+    // loads the plugin. The build version (e.g. 12.7.4-zoi.1) ships in source
+    // for identity, but the cache must declare the pinned version (e.g. 13.2.0)
+    // to match installed_plugins.json — otherwise CC silently drops the plugin.
+    const installedVersion = installedMismatch.installedVersion;
+    const manifestPaths = [
+      path.join(INSTALLED_CACHE_PATH, '.claude-plugin', 'plugin.json'),
+      path.join(INSTALLED_CACHE_PATH, '.codex-plugin', 'plugin.json'),
+      path.join(INSTALLED_CACHE_PATH, 'package.json'),
+    ];
+    for (const p of manifestPaths) {
+      if (!existsSync(p)) continue;
+      try {
+        const j = JSON.parse(readFileSync(p, 'utf8'));
+        if (j.version && j.version !== installedVersion) {
+          j.version = installedVersion;
+          writeFileSync(p, JSON.stringify(j, null, 2) + '\n', 'utf8');
+        }
+      } catch (e) {
+        console.warn(`Could not realign version in ${p}: ${e.message}`);
+      }
+    }
+    console.log(`Realigned manifest versions in installed cache to ${installedVersion}`);
     console.log(`Running bun install in installed-version cache (${installedMismatch.installedVersion})...`);
     execSync(`bun install`, { cwd: INSTALLED_CACHE_PATH, stdio: 'inherit' });
   }
