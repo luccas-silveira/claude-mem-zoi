@@ -377,6 +377,55 @@ export class SessionManager {
     return this.sessions.size;
   }
 
+  getActiveSessionsDetails(filterProject?: string): Array<{
+    sessionDbId: number;
+    contentSessionId: string;
+    project: string;
+    platformSource: string;
+    lastPrompt: string;
+    promptNumber: number;
+    startedAt: string;
+    elapsedMs: number;
+    pendingMessages: number;
+    lastActivity: string | null;
+    lastTool: string | null;
+    provider: string | null;
+    historyLength: number;
+  }> {
+    const now = Date.now();
+    const details: ReturnType<SessionManager['getActiveSessionsDetails']> = [];
+    for (const session of this.sessions.values()) {
+      if (filterProject && session.project !== filterProject) {
+        continue;
+      }
+      let lastTool: string | null = null;
+      for (let i = session.pendingMessages.length - 1; i >= 0; i--) {
+        const msg = session.pendingMessages[i] as any;
+        if (msg.type === 'observation' && msg.toolName) {
+          lastTool = msg.toolName;
+          break;
+        }
+      }
+      const lastActivityTs = session.earliestPendingTimestamp;
+      details.push({
+        sessionDbId: session.sessionDbId,
+        contentSessionId: session.contentSessionId,
+        project: session.project,
+        platformSource: session.platformSource,
+        lastPrompt: (session.userPrompt || '').slice(0, 200),
+        promptNumber: session.lastPromptNumber,
+        startedAt: new Date(session.startTime).toISOString(),
+        elapsedMs: now - session.startTime,
+        pendingMessages: session.pendingMessages.length,
+        lastActivity: lastActivityTs ? new Date(lastActivityTs).toISOString() : null,
+        lastTool,
+        provider: session.currentProvider,
+        historyLength: session.conversationHistory.length,
+      });
+    }
+    return details;
+  }
+
   getTotalQueueDepth(): number {
     const stmt = this.dbManager.getSessionStore().db.prepare(`
       SELECT COUNT(*) as count FROM pending_messages

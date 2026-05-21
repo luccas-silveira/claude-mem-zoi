@@ -226,6 +226,18 @@ export class SessionRoutes extends BaseRouteHandler {
       this.handleSummarizeByClaudeId.bind(this)
     );
     app.get('/api/sessions/status', this.handleStatusByClaudeId.bind(this));
+    app.get('/api/sessions/active', this.handleListActiveSessions.bind(this));
+  }
+
+  private handleListActiveSessions(req: Request, res: Response): void {
+    try {
+      const project = typeof req.query.project === 'string' ? req.query.project : undefined;
+      const sessions = this.sessionManager.getActiveSessionsDetails(project);
+      res.json({ sessions, count: sessions.length });
+    } catch (err: any) {
+      logger.error('SESSION', 'Failed to list active sessions', undefined, { error: err?.message });
+      res.status(500).json({ error: err?.message ?? 'unknown error' });
+    }
   }
 
   private static readonly sessionInitByClaudeIdSchema = z.object({

@@ -49,7 +49,8 @@ function errorIfWorkerScriptMissing(): void {
 
 const TOOL_ENDPOINT_MAP: Record<string, string> = {
   'search': '/api/search',
-  'timeline': '/api/timeline'
+  'timeline': '/api/timeline',
+  'active_sessions': '/api/sessions/active'
 };
 
 async function callWorkerAPI(
@@ -255,6 +256,60 @@ NEVER fetch full details without filtering first. 10x token savings.`,
     handler: async (args: any) => {
       const endpoint = TOOL_ENDPOINT_MAP['timeline'];
       return await callWorkerAPI(endpoint, args);
+    }
+  },
+  {
+    name: 'active_sessions',
+    description: 'List currently active (in-flight) claude-mem sessions across CLIs (Claude Code, Codex, Cursor, Gemini). Returns project, platform, last prompt, last tool used, elapsed time, and pending queue depth. Use this to see what other CLIs are working on RIGHT NOW in the same project. Optional filter: project (string).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Filter by project name (uses git-root basename by default)' }
+      },
+      additionalProperties: true
+    },
+    handler: async (args: any) => {
+      const searchParams = new URLSearchParams();
+      if (args?.project) searchParams.append('project', String(args.project));
+      const apiPath = `/api/sessions/active?${searchParams}`;
+      try {
+        const response = await workerHttpRequest(apiPath);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Worker API error (${response.status}): ${errorText}`);
+        }
+        const data = await response.json() as { sessions: any[]; count: number };
+        if (!data.sessions || data.sessions.length === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'No active sessions' + (args?.project ? ` for project "${args.project}"` : '') + '.'
+            }]
+          };
+        }
+        const lines: string[] = [`Active sessions: ${data.count}`];
+        for (const s of data.sessions) {
+          const elapsedMin = Math.floor(s.elapsedMs / 60000);
+          const elapsedSec = Math.floor((s.elapsedMs % 60000) / 1000);
+          lines.push('');
+          lines.push(`### session-${s.sessionDbId} [${s.platformSource}] ${s.project}`);
+          lines.push(`- provider: ${s.provider ?? 'pending'}`);
+          lines.push(`- elapsed: ${elapsedMin}m${elapsedSec}s (started ${s.startedAt})`);
+          lines.push(`- prompt #${s.promptNumber}: ${s.lastPrompt || '(no prompt)'}`);
+          if (s.lastTool) lines.push(`- last tool: ${s.lastTool}`);
+          if (s.lastActivity) lines.push(`- last activity: ${s.lastActivity}`);
+          lines.push(`- queue depth: ${s.pendingMessages}, history: ${s.historyLength}`);
+        }
+        return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+      } catch (error: unknown) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error listing active sessions: ${error instanceof Error ? error.message : String(error)}`
+          }],
+          isError: true
+        };
+      }
     }
   },
   {
