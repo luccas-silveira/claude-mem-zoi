@@ -171,6 +171,30 @@ try {
   const version = getPluginVersion();
   const CACHE_VERSION_PATH = path.join(CACHE_BASE_PATH, version);
 
+  // If the install record pins a different version than the build version,
+  // also rewrite the marketplace.json plugin entry to match the install pin.
+  // Claude Code cross-references the marketplace entry against the install
+  // record; a mismatch makes CC silently drop the plugin.
+  if (installedMismatch && installedMismatch.installedVersion !== version) {
+    const marketplaceJsonPath = path.join(INSTALLED_PATH, '.claude-plugin', 'marketplace.json');
+    if (existsSync(marketplaceJsonPath)) {
+      try {
+        const mj = JSON.parse(readFileSync(marketplaceJsonPath, 'utf8'));
+        if (Array.isArray(mj.plugins)) {
+          for (const entry of mj.plugins) {
+            if (entry && entry.name === 'claude-mem' && entry.version !== installedMismatch.installedVersion) {
+              entry.version = installedMismatch.installedVersion;
+            }
+          }
+          writeFileSync(marketplaceJsonPath, JSON.stringify(mj, null, 2) + '\n', 'utf8');
+          console.log(`Aligned marketplace.json plugin entry version to ${installedMismatch.installedVersion}`);
+        }
+      } catch (e) {
+        console.warn(`Could not align marketplace.json: ${e.message}`);
+      }
+    }
+  }
+
   const pluginDir = path.join(rootDir, 'plugin');
   const pluginGitignoreExcludes = getGitignoreExcludes(pluginDir);
 
