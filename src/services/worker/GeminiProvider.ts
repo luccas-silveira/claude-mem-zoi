@@ -2,7 +2,7 @@
 import { DatabaseManager } from './DatabaseManager.js';
 import { SessionManager } from './SessionManager.js';
 import { logger } from '../../utils/logger.js';
-import { buildInitPrompt, buildObservationPrompt, buildSummaryPrompt, buildContinuationPrompt } from '../../sdk/prompts.js';
+import { buildInitUserPrompt, buildObservationPrompt, buildSummaryPrompt, buildContinuationUserPrompt, buildSystemPrompt } from '../../sdk/prompts.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { getCredential } from '../../shared/EnvManager.js';
 import { USER_SETTINGS_PATH, paths } from '../../shared/paths.js';
@@ -204,14 +204,22 @@ export class GeminiProvider {
     }
 
     const mode = ModeManager.getInstance().getActiveMode();
+
+    // Stable observer instructions go into Gemini's top-level
+    // `systemInstruction` field (Fase 2 split). When the resolved context
+    // is large enough (~32k tokens), Gemini's implicit context cache fires
+    // automatically on the systemInstruction prefix.
+    if (!session.systemPrompt) {
+      session.systemPrompt = buildSystemPrompt(mode);
+    }
     const initPrompt = session.lastPromptNumber === 1
-      ? buildInitPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
-      : buildContinuationPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
+      ? buildInitUserPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
+      : buildContinuationUserPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
 
     session.conversationHistory.push({ role: 'user', content: initPrompt });
     let initResponse: { content: string; tokensUsed?: number };
     try {
-      initResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled);
+      initResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled, session.systemPrompt);
     } catch (error: unknown) {
       if (error instanceof Error) {
         logger.error('SDK', 'Gemini init query failed', { sessionId: session.sessionDbId, model }, error);
@@ -305,7 +313,7 @@ export class GeminiProvider {
     });
 
     session.conversationHistory.push({ role: 'user', content: obsPrompt });
-    const obsResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled);
+    const obsResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled, session.systemPrompt);
 
     let tokensUsed = 0;
     if (obsResponse.content) {
@@ -348,7 +356,7 @@ export class GeminiProvider {
     }, mode);
 
     session.conversationHistory.push({ role: 'user', content: summaryPrompt });
-    const summaryResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled);
+    const summaryResponse = await this.queryGeminiMultiTurn(session.conversationHistory, apiKey, model, rateLimitingEnabled, session.systemPrompt);
 
     let tokensUsed = 0;
     if (summaryResponse.content) {
@@ -426,7 +434,8 @@ export class GeminiProvider {
     history: ConversationMessage[],
     apiKey: string,
     model: GeminiModel,
-    rateLimitingEnabled: boolean
+    rateLimitingEnabled: boolean,
+    systemPrompt?: string
   ): Promise<{ content: string; tokensUsed?: number }> {
     const truncatedHistory = this.truncateHistory(history);
     const contents = this.conversationToGeminiContents(truncatedHistory);
@@ -456,6 +465,14 @@ export class GeminiProvider {
           },
           body: JSON.stringify({
             contents,
+            // Top-level `systemInstruction` per Google AI Studio docs
+            // (`models.generateContent`): type Content = { parts: Part[] }.
+            // Implicit context cache applies when the context is large
+            // enough (~32k tokens) and the prefix bytes stay stable
+            // across requests.
+            ...(systemPrompt && systemPrompt.length > 0
+              ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
+              : {}),
             generationConfig: {
               temperature: 0.3,  // Lower temperature for structured extraction
               maxOutputTokens: 8192,

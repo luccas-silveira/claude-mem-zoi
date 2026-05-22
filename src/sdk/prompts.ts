@@ -214,4 +214,105 @@ ${mode.prompts.format_examples}
 ${mode.prompts.footer}
 
 ${mode.prompts.header_memory_continued}`;
-} 
+}
+
+/**
+ * Build the STABLE observer system prompt. Deterministic — same `mode`
+ * input always produces identical bytes. No timestamps, randomness, or I/O.
+ * Set once per session and reused across every turn so providers that
+ * support prompt caching (DeepSeek implicit, Gemini systemInstruction
+ * implicit context cache, Ollama/OpenRouter explicit in Fase 3) can hit
+ * the cache.
+ */
+export function buildSystemPrompt(mode: ModeConfig): string {
+  return `${mode.prompts.system_identity}
+
+${mode.prompts.observer_role}
+
+${mode.prompts.spatial_awareness}
+
+${mode.prompts.recording_focus}
+
+${mode.prompts.skip_guidance}
+
+${mode.prompts.output_format_header}
+
+<observation>
+  <type>[ ${mode.observation_types.map(t => t.id).join(' | ')} ]</type>
+  <!--
+    ${mode.prompts.type_guidance}
+  -->
+  <title>${mode.prompts.xml_title_placeholder}</title>
+  <subtitle>${mode.prompts.xml_subtitle_placeholder}</subtitle>
+  <facts>
+    <fact>${mode.prompts.xml_fact_placeholder}</fact>
+    <fact>${mode.prompts.xml_fact_placeholder}</fact>
+    <fact>${mode.prompts.xml_fact_placeholder}</fact>
+  </facts>
+  <!--
+    ${mode.prompts.field_guidance}
+  -->
+  <narrative>${mode.prompts.xml_narrative_placeholder}</narrative>
+  <concepts>
+    <concept>${mode.prompts.xml_concept_placeholder}</concept>
+    <concept>${mode.prompts.xml_concept_placeholder}</concept>
+  </concepts>
+  <!--
+    ${mode.prompts.concept_guidance}
+  -->
+  <files_read>
+    <file>${mode.prompts.xml_file_placeholder}</file>
+    <file>${mode.prompts.xml_file_placeholder}</file>
+  </files_read>
+  <files_modified>
+    <file>${mode.prompts.xml_file_placeholder}</file>
+    <file>${mode.prompts.xml_file_placeholder}</file>
+  </files_modified>
+</observation>
+${mode.prompts.format_examples}
+
+${mode.prompts.footer}`;
+}
+
+/**
+ * Build the DYNAMIC user-side init prompt. Pairs with `buildSystemPrompt`.
+ * Contains the per-session user_request and the current date (turn-specific),
+ * so it intentionally is NOT cacheable.
+ */
+export function buildInitUserPrompt(
+  project: string,
+  sessionId: string,
+  userPrompt: string,
+  mode: ModeConfig
+): string {
+  return `<observed_from_primary_session>
+  <user_request>${userPrompt}</user_request>
+  <requested_at>${new Date().toISOString().split('T')[0]}</requested_at>
+</observed_from_primary_session>
+
+${mode.prompts.header_memory_start}`;
+}
+
+/**
+ * Build the DYNAMIC user-side continuation prompt. Pairs with
+ * `buildSystemPrompt`. Like `buildInitUserPrompt`, this is per-turn and
+ * not cacheable.
+ */
+export function buildContinuationUserPrompt(
+  userPrompt: string,
+  promptNumber: number,
+  contentSessionId: string,
+  mode: ModeConfig
+): string {
+  return `${mode.prompts.continuation_greeting}
+
+<observed_from_primary_session>
+  <user_request>${userPrompt}</user_request>
+  <requested_at>${new Date().toISOString().split('T')[0]}</requested_at>
+</observed_from_primary_session>
+
+${mode.prompts.continuation_instruction}
+
+${mode.prompts.header_memory_continued}`;
+}
+

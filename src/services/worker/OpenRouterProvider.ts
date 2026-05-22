@@ -1,5 +1,5 @@
 
-import { buildContinuationPrompt, buildInitPrompt, buildObservationPrompt, buildSummaryPrompt } from '../../sdk/prompts.js';
+import { buildContinuationUserPrompt, buildInitUserPrompt, buildObservationPrompt, buildSummaryPrompt, buildSystemPrompt } from '../../sdk/prompts.js';
 import { getCredential } from '../../shared/EnvManager.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../shared/paths.js';
@@ -160,14 +160,20 @@ export class OpenRouterProvider {
 
     const mode = ModeManager.getInstance().getActiveMode();
 
+    // Stable observer instructions live in `session.systemPrompt` so the
+    // prefix bytes stay identical across turns (Fase 2 split). This also
+    // sets up Fase 3 explicit prompt-cache markers on supporting models.
+    if (!session.systemPrompt) {
+      session.systemPrompt = buildSystemPrompt(mode);
+    }
     const initPrompt = session.lastPromptNumber === 1
-      ? buildInitPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
-      : buildContinuationPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
+      ? buildInitUserPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
+      : buildContinuationUserPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
 
     session.conversationHistory.push({ role: 'user', content: initPrompt });
 
     try {
-      const initResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName);
+      const initResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName, session.systemPrompt);
       await this.handleInitResponse(initResponse, session, worker, model);
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -295,7 +301,7 @@ export class OpenRouterProvider {
     });
 
     session.conversationHistory.push({ role: 'user', content: obsPrompt });
-    const obsResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName);
+    const obsResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName, session.systemPrompt);
 
     let tokensUsed = 0;
     if (obsResponse.content) {
@@ -336,7 +342,7 @@ export class OpenRouterProvider {
     }, mode);
 
     session.conversationHistory.push({ role: 'user', content: summaryPrompt });
-    const summaryResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName);
+    const summaryResponse = await this.queryOpenRouterMultiTurn(session.conversationHistory, apiKey, model, siteUrl, appName, session.systemPrompt);
 
     let tokensUsed = 0;
     if (summaryResponse.content) {
@@ -366,11 +372,13 @@ export class OpenRouterProvider {
     return Math.ceil(text.length / CHARS_PER_TOKEN_ESTIMATE);
   }
 
-  private truncateHistory(history: ConversationMessage[]): ConversationMessage[] {
+  private truncateHistory(history: ConversationMessage[], systemPrompt?: string): ConversationMessage[] {
     const settings = SettingsDefaultsManager.loadFromFile(USER_SETTINGS_PATH);
 
     const MAX_CONTEXT_MESSAGES = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES) || DEFAULT_MAX_CONTEXT_MESSAGES;
-    const MAX_ESTIMATED_TOKENS = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS) || DEFAULT_MAX_ESTIMATED_TOKENS;
+    const RAW_MAX_ESTIMATED_TOKENS = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS) || DEFAULT_MAX_ESTIMATED_TOKENS;
+    const systemTokens = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    const MAX_ESTIMATED_TOKENS = Math.max(1, RAW_MAX_ESTIMATED_TOKENS - systemTokens);
 
     if (history.length <= MAX_CONTEXT_MESSAGES) {
       const totalTokens = history.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
@@ -404,11 +412,15 @@ export class OpenRouterProvider {
     return truncated;
   }
 
-  private conversationToOpenAIMessages(history: ConversationMessage[]): OpenAIMessage[] {
-    return history.map(msg => ({
+  private conversationToOpenAIMessages(history: ConversationMessage[], systemPrompt?: string): OpenAIMessage[] {
+    const mapped: OpenAIMessage[] = history.map(msg => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.content
     }));
+    if (systemPrompt && systemPrompt.length > 0) {
+      return [{ role: 'system', content: systemPrompt }, ...mapped];
+    }
+    return mapped;
   }
 
   private async queryOpenRouterMultiTurn(
@@ -416,10 +428,11 @@ export class OpenRouterProvider {
     apiKey: string,
     model: string,
     siteUrl?: string,
-    appName?: string
+    appName?: string,
+    systemPrompt?: string
   ): Promise<{ content: string; tokensUsed?: number }> {
-    const truncatedHistory = this.truncateHistory(history);
-    const messages = this.conversationToOpenAIMessages(truncatedHistory);
+    const truncatedHistory = this.truncateHistory(history, systemPrompt);
+    const messages = this.conversationToOpenAIMessages(truncatedHistory, systemPrompt);
     const totalChars = truncatedHistory.reduce((sum, m) => sum + m.content.length, 0);
     const estimatedTokens = this.estimateTokens(truncatedHistory.map(m => m.content).join(''));
 

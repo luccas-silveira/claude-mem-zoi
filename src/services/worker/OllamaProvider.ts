@@ -1,4 +1,4 @@
-import { buildContinuationPrompt, buildInitPrompt, buildObservationPrompt, buildSummaryPrompt } from '../../sdk/prompts.js';
+import { buildContinuationUserPrompt, buildInitUserPrompt, buildObservationPrompt, buildSummaryPrompt, buildSystemPrompt } from '../../sdk/prompts.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../shared/paths.js';
 import { logger } from '../../utils/logger.js';
@@ -146,14 +146,20 @@ export class OllamaProvider {
 
     const mode = ModeManager.getInstance().getActiveMode();
 
+    // Stable observer instructions live in `session.systemPrompt` so they
+    // can be cached across every turn (Fase 2 split). User message keeps
+    // only the per-turn dynamic content.
+    if (!session.systemPrompt) {
+      session.systemPrompt = buildSystemPrompt(mode);
+    }
     const initPrompt = session.lastPromptNumber === 1
-      ? buildInitPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
-      : buildContinuationPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
+      ? buildInitUserPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
+      : buildContinuationUserPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
 
     session.conversationHistory.push({ role: 'user', content: initPrompt });
 
     try {
-      const initResponse = await this.queryOllamaMultiTurn(session.conversationHistory, { baseUrl, model, numCtx }, worker);
+      const initResponse = await this.queryOllamaMultiTurn(session.conversationHistory, { baseUrl, model, numCtx }, worker, session.systemPrompt);
       await this.handleInitResponse(initResponse, session, worker, model);
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -274,7 +280,7 @@ export class OllamaProvider {
     });
 
     session.conversationHistory.push({ role: 'user', content: obsPrompt });
-    const obsResponse = await this.queryOllamaMultiTurn(session.conversationHistory, config, worker);
+    const obsResponse = await this.queryOllamaMultiTurn(session.conversationHistory, config, worker, session.systemPrompt);
 
     let tokensUsed = 0;
     if (obsResponse.content) {
@@ -312,7 +318,7 @@ export class OllamaProvider {
     }, mode);
 
     session.conversationHistory.push({ role: 'user', content: summaryPrompt });
-    const summaryResponse = await this.queryOllamaMultiTurn(session.conversationHistory, config, worker);
+    const summaryResponse = await this.queryOllamaMultiTurn(session.conversationHistory, config, worker, session.systemPrompt);
 
     let tokensUsed = 0;
     if (summaryResponse.content) {
@@ -342,8 +348,13 @@ export class OllamaProvider {
     return Math.ceil(text.length / CHARS_PER_TOKEN_ESTIMATE);
   }
 
-  private truncateHistory(history: ConversationMessage[], numCtx: number): ConversationMessage[] {
-    const maxEstimatedTokens = Math.max(1, numCtx - RESPONSE_TOKEN_RESERVE);
+  private truncateHistory(
+    history: ConversationMessage[],
+    numCtx: number,
+    systemPrompt?: string
+  ): ConversationMessage[] {
+    const systemTokens = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    const maxEstimatedTokens = Math.max(1, numCtx - RESPONSE_TOKEN_RESERVE - systemTokens);
 
     const totalTokens = history.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
     if (totalTokens <= maxEstimatedTokens) {
@@ -375,11 +386,15 @@ export class OllamaProvider {
     return truncated;
   }
 
-  private conversationToOpenAIMessages(history: ConversationMessage[]): OpenAIMessage[] {
-    return history.map(msg => ({
+  private conversationToOpenAIMessages(history: ConversationMessage[], systemPrompt?: string): OpenAIMessage[] {
+    const mapped: OpenAIMessage[] = history.map(msg => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.content
     }));
+    if (systemPrompt && systemPrompt.length > 0) {
+      return [{ role: 'system', content: systemPrompt }, ...mapped];
+    }
+    return mapped;
   }
 
   private disableThinking(messages: OpenAIMessage[], model: string): OpenAIMessage[] {
@@ -401,10 +416,11 @@ export class OllamaProvider {
   private async queryOllamaMultiTurn(
     history: ConversationMessage[],
     config: OllamaConfig,
-    worker?: WorkerRef
+    worker?: WorkerRef,
+    systemPrompt?: string
   ): Promise<{ content: string; tokensUsed?: number }> {
-    const truncatedHistory = this.truncateHistory(history, config.numCtx);
-    const messages = this.conversationToOpenAIMessages(truncatedHistory);
+    const truncatedHistory = this.truncateHistory(history, config.numCtx, systemPrompt);
+    const messages = this.conversationToOpenAIMessages(truncatedHistory, systemPrompt);
     const totalChars = truncatedHistory.reduce((sum, m) => sum + m.content.length, 0);
     const estimatedTokens = this.estimateTokens(truncatedHistory.map(m => m.content).join(''));
     const forceJson = this.shouldForceJson(messages);

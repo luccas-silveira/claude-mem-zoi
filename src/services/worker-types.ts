@@ -22,7 +22,8 @@ export interface ActiveSession {
   cumulativeInputTokens: number;   
   cumulativeOutputTokens: number;  
   earliestPendingTimestamp: number | null;  
-  conversationHistory: ConversationMessage[];  
+  conversationHistory: ConversationMessage[];
+  systemPrompt?: string;  // Stable observer instructions cached across turns; set once on session start.
   currentProvider: 'claude' | 'gemini' | 'openrouter' | 'ollama' | 'deepseek' | null;
   consecutiveRestarts: number;  
   restartGuard?: RestartGuard;
