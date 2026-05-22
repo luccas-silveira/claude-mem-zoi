@@ -325,3 +325,56 @@ grep -rln "decidePrefilter" src/ | wc -l  # esperar 2: PrefilterDecider.ts + sha
 - Manter feature flags (`CLAUDE_MEM_PREFILTER_ENABLED`, etc.) por 1 release antes de remover.
 - Atualizar `docs/public/` se mudanças afetam API pública ou settings visíveis.
 - Sem mudança em `CHANGELOG.md` (auto-gerado, ver `CLAUDE.md`).
+
+---
+
+## Resultados Finais
+
+Linha de chegada (commit SHA por fase):
+
+- Fase 1 — pré-filtro determinístico: `91dc7dc8`
+- Fase 2 — split system/user: `4feab6b7`
+- Fase 3 — cache markers Claude SDK + OpenRouter: `590cb214`
+- Fase 4 — slim mode JSON + geradores: `94817ed8`
+- Fase 5 — guards + métricas + checklist: TBD (este commit)
+
+Tamanho dos modes (Fase 4):
+
+- `plugin/modes/code.json`: 10243 → 7975 bytes (−22%)
+- `plugin/modes/code--pt-br.json`: 3081 → 2125 bytes (−31%)
+
+Novos arquivos (consolidado):
+
+- `src/services/worker/http/PrefilterDecider.ts` (Fase 1)
+- `src/services/worker/http/SessionReadCache.ts` (Fase 1)
+- `tests/prefilter-decider.test.ts` (Fase 1)
+- `tests/system-prompt-determinism.test.ts` (Fase 2)
+- `tests/cache-markers.test.ts` (Fase 3)
+- `tests/cache-savings-guards.test.ts` (Fase 5 — anti-pattern)
+- `scripts/inspect-cache-savings.ts` (Fase 5 — métricas read-only)
+
+Branches (Fase 1 sibling; Fases 2-5 stacked):
+
+```
+feat/prefilter-hook              (Fase 1)
+feat/prompt-cache-system         (Fase 2)
+feat/cache-control-markers       (Fase 3)
+feat/slim-mode-prompts           (Fase 4)
+feat/cache-savings-verification  (Fase 5, este — merge de Fase 1)
+```
+
+Métricas — invocar:
+
+```bash
+bun scripts/inspect-cache-savings.ts          # últimas 10 sessões
+bun scripts/inspect-cache-savings.ts 25       # últimas 25 sessões
+```
+
+Respeita `CLAUDE_MEM_DATA_DIR`. Leitura apenas; seguro contra worker rodando.
+
+Próximos passos opcionais:
+
+- Normalizar as 27+ variantes de idioma de `code--*.json` (Fase 4 cobriu só `code.json` e `code--pt-br.json`).
+- Refatorar caminho Anthropic raw direto (sem agent SDK) para ganho extra de cache.
+- Adicionar coluna `skipped_count` em `sdk_sessions` para persistir métricas de pré-filtro.
+- Sincronizar leitura entre `CLAUDE_MEM_PREFILTER_*` env vars e UI do viewer.
