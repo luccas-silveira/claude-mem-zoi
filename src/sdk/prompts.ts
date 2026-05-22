@@ -21,6 +21,16 @@ export interface SDKSession {
   last_assistant_message?: string;
 }
 
+export function generateTypeGuidance(mode: ModeConfig): string {
+  const lines = mode.observation_types.map(t => `      - ${t.id}: ${t.description}`).join('\n');
+  return `**type**: MUST be EXACTLY one of these ${mode.observation_types.length} options (no other values allowed):\n${lines}`;
+}
+
+export function generateConceptGuidance(mode: ModeConfig): string {
+  const lines = mode.observation_concepts.map(c => `      - ${c.id}: ${c.description}`).join('\n');
+  return `**concepts**: 2-5 knowledge-type categories. MUST use ONLY these exact keywords:\n${lines}\n\n    IMPORTANT: Do NOT include the observation type as a concept.\n    Types and concepts are separate dimensions.`;
+}
+
 export function buildInitPrompt(project: string, sessionId: string, userPrompt: string, mode: ModeConfig): string {
   return `${mode.prompts.system_identity}
 
@@ -42,7 +52,7 @@ ${mode.prompts.output_format_header}
 <observation>
   <type>[ ${mode.observation_types.map(t => t.id).join(' | ')} ]</type>
   <!--
-    ${mode.prompts.type_guidance}
+    ${generateTypeGuidance(mode)}
   -->
   <title>${mode.prompts.xml_title_placeholder}</title>
   <subtitle>${mode.prompts.xml_subtitle_placeholder}</subtitle>
@@ -60,7 +70,7 @@ ${mode.prompts.output_format_header}
     <concept>${mode.prompts.xml_concept_placeholder}</concept>
   </concepts>
   <!--
-    ${mode.prompts.concept_guidance}
+    ${generateConceptGuidance(mode)}
   -->
   <files_read>
     <file>${mode.prompts.xml_file_placeholder}</file>
@@ -180,7 +190,7 @@ ${mode.prompts.output_format_header}
 <observation>
   <type>[ ${mode.observation_types.map(t => t.id).join(' | ')} ]</type>
   <!--
-    ${mode.prompts.type_guidance}
+    ${generateTypeGuidance(mode)}
   -->
   <title>${mode.prompts.xml_title_placeholder}</title>
   <subtitle>${mode.prompts.xml_subtitle_placeholder}</subtitle>
@@ -198,7 +208,7 @@ ${mode.prompts.output_format_header}
     <concept>${mode.prompts.xml_concept_placeholder}</concept>
   </concepts>
   <!--
-    ${mode.prompts.concept_guidance}
+    ${generateConceptGuidance(mode)}
   -->
   <files_read>
     <file>${mode.prompts.xml_file_placeholder}</file>
@@ -240,7 +250,7 @@ ${mode.prompts.output_format_header}
 <observation>
   <type>[ ${mode.observation_types.map(t => t.id).join(' | ')} ]</type>
   <!--
-    ${mode.prompts.type_guidance}
+    ${generateTypeGuidance(mode)}
   -->
   <title>${mode.prompts.xml_title_placeholder}</title>
   <subtitle>${mode.prompts.xml_subtitle_placeholder}</subtitle>
@@ -258,7 +268,7 @@ ${mode.prompts.output_format_header}
     <concept>${mode.prompts.xml_concept_placeholder}</concept>
   </concepts>
   <!--
-    ${mode.prompts.concept_guidance}
+    ${generateConceptGuidance(mode)}
   -->
   <files_read>
     <file>${mode.prompts.xml_file_placeholder}</file>

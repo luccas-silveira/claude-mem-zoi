@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildSystemPrompt, buildInitUserPrompt, buildContinuationUserPrompt } from '../src/sdk/prompts.js';
+import { buildSystemPrompt, buildInitUserPrompt, buildContinuationUserPrompt, generateTypeGuidance, generateConceptGuidance } from '../src/sdk/prompts.js';
 import type { ModeConfig } from '../src/services/domain/types.js';
 
 const fixtureMode: ModeConfig = {
@@ -8,11 +8,13 @@ const fixtureMode: ModeConfig = {
   description: 'fixture mode for determinism tests',
   version: '0.0.0',
   observation_types: [
+    { id: 'bugfix',    label: 'Bugfix',    description: 'something was broken, now fixed', emoji: 'B', work_emoji: 'W' },
     { id: 'discovery', label: 'Discovery', description: 'd', emoji: 'D', work_emoji: 'W' },
     { id: 'decision',  label: 'Decision',  description: 'd', emoji: 'D', work_emoji: 'W' },
   ],
   observation_concepts: [
-    { id: 'concept_a', label: 'A', description: 'a' },
+    { id: 'how-it-works', label: 'How It Works', description: 'understanding mechanisms' },
+    { id: 'concept_a',    label: 'A',            description: 'a' },
   ],
   prompts: {
     system_identity:        'SYSTEM_IDENTITY_TEXT',
@@ -94,6 +96,27 @@ describe('buildInitUserPrompt', () => {
     expect(prompt).not.toContain('OBSERVER_ROLE_TEXT');
     expect(prompt).not.toContain('<observation>');
     expect(prompt).not.toContain('FOOTER_TEXT');
+  });
+});
+
+describe('generateTypeGuidance / generateConceptGuidance', () => {
+  it('produce byte-deterministic output across calls', () => {
+    const t1 = generateTypeGuidance(fixtureMode);
+    const t2 = generateTypeGuidance(fixtureMode);
+    const c1 = generateConceptGuidance(fixtureMode);
+    const c2 = generateConceptGuidance(fixtureMode);
+    expect(t1).toBe(t2);
+    expect(c1).toBe(c2);
+    expect(t1.length).toBeGreaterThan(0);
+    expect(c1.length).toBeGreaterThan(0);
+  });
+
+  it('buildSystemPrompt embeds the programmatically generated type and concept IDs', () => {
+    const prompt = buildSystemPrompt(fixtureMode);
+    expect(prompt).toContain('- bugfix:');
+    expect(prompt).toContain('- discovery:');
+    expect(prompt).toContain('- how-it-works:');
+    expect(prompt).toContain('- concept_a:');
   });
 });
 

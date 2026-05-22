@@ -18,10 +18,10 @@ export interface ModePrompts {
   spatial_awareness: string;
   observer_role: string;         
   recording_focus: string;       
-  skip_guidance: string;         
-  type_guidance: string;         
-  concept_guidance: string;      
-  field_guidance: string;        
+  skip_guidance: string;
+  type_guidance?: string;
+  concept_guidance?: string;
+  field_guidance: string;
   output_format_header: string;  
   format_examples: string;       
   footer: string;                
