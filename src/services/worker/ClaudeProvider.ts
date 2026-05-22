@@ -2,7 +2,13 @@
 import { DatabaseManager } from './DatabaseManager.js';
 import { SessionManager } from './SessionManager.js';
 import { logger } from '../../utils/logger.js';
-import { buildInitPrompt, buildObservationPrompt, buildSummaryPrompt, buildContinuationPrompt } from '../../sdk/prompts.js';
+import {
+  buildObservationPrompt,
+  buildSummaryPrompt,
+  buildSystemPrompt,
+  buildInitUserPrompt,
+  buildContinuationUserPrompt,
+} from '../../sdk/prompts.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH, OBSERVER_SESSIONS_DIR, ensureDir, paths } from '../../shared/paths.js';
 import { buildIsolatedEnvWithFreshOAuth, getAuthMethodDescription } from '../../shared/EnvManager.js';
@@ -24,7 +30,7 @@ import {
 } from './RateLimitStore.js';
 
 // @ts-ignore - Agent SDK types may not be available
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
 import { ClassifiedProviderError } from './provider-errors.js';
 
 /**
@@ -135,6 +141,10 @@ export class ClaudeProvider {
       'TodoWrite'       
     ];
 
+    if (!session.systemPrompt) {
+      session.systemPrompt = buildSystemPrompt(ModeManager.getInstance().getActiveMode());
+    }
+
     const messageGenerator = this.createMessageGenerator(session, cwdTracker);
 
     const hasRealMemorySessionId = !!session.memorySessionId;
@@ -183,6 +193,14 @@ export class ClaudeProvider {
         model: modelId,
         cwd: OBSERVER_SESSIONS_DIR,
         ...(shouldResume && session.memorySessionId ? { resume: session.memorySessionId } : {}),
+        // Stable observer instructions before SYSTEM_PROMPT_DYNAMIC_BOUNDARY are
+        // eligible for cross-session prompt caching.
+        // Refs: node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:1695-1757 (systemPrompt modes)
+        //       node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:5335 (SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+        systemPrompt: [
+          session.systemPrompt!,
+          SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+        ],
         disallowedTools,
         abortController: session.abortController,
         pathToClaudeCodeExecutable: claudePath,
@@ -354,6 +372,13 @@ export class ClaudeProvider {
   ): AsyncIterableIterator<SDKUserMessage> {
     const mode = ModeManager.getInstance().getActiveMode();
 
+    // Stable observer instructions live in `session.systemPrompt` so the
+    // prefix bytes stay identical across turns. The SDK then emits them
+    // before SYSTEM_PROMPT_DYNAMIC_BOUNDARY so they become a cacheable prefix.
+    if (!session.systemPrompt) {
+      session.systemPrompt = buildSystemPrompt(mode);
+    }
+
     const isInitPrompt = session.lastPromptNumber === 1;
     logger.info('SDK', 'Creating message generator', {
       sessionDbId: session.sessionDbId,
@@ -364,8 +389,8 @@ export class ClaudeProvider {
     });
 
     const initPrompt = isInitPrompt
-      ? buildInitPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
-      : buildContinuationPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
+      ? buildInitUserPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
+      : buildContinuationUserPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
 
     session.conversationHistory.push({ role: 'user', content: initPrompt });
 

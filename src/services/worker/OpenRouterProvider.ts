@@ -111,9 +111,15 @@ const DEFAULT_MAX_CONTEXT_MESSAGES = 20;
 const DEFAULT_MAX_ESTIMATED_TOKENS = 100000;  
 const CHARS_PER_TOKEN_ESTIMATE = 4;  
 
+type OpenAIContentBlock = {
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+};
+
 interface OpenAIMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | OpenAIContentBlock[];
 }
 
 interface OpenRouterResponse {
@@ -128,6 +134,10 @@ interface OpenRouterResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_write_tokens?: number;
+    };
   };
   error?: {
     message?: string;
@@ -412,15 +422,36 @@ export class OpenRouterProvider {
     return truncated;
   }
 
-  private conversationToOpenAIMessages(history: ConversationMessage[], systemPrompt?: string): OpenAIMessage[] {
+  private isAnthropicModel(model: string): boolean {
+    return model.startsWith('anthropic/');
+  }
+
+  private conversationToOpenAIMessages(
+    history: ConversationMessage[],
+    systemPrompt?: string,
+    model?: string
+  ): OpenAIMessage[] {
     const mapped: OpenAIMessage[] = history.map(msg => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.content
     }));
-    if (systemPrompt && systemPrompt.length > 0) {
-      return [{ role: 'system', content: systemPrompt }, ...mapped];
+    if (!systemPrompt || systemPrompt.length === 0) return mapped;
+    if (model && this.isAnthropicModel(model)) {
+      // OpenRouter per-block cache_control on the stable system prompt — only
+      // valid for Anthropic-namespace models. One breakpoint (well under the
+      // 4-max limit). Under-threshold prompts simply aren't cached, no error.
+      // Ref: https://openrouter.ai/docs/features/prompt-caching
+      return [
+        {
+          role: 'system',
+          content: [
+            { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }
+          ]
+        },
+        ...mapped,
+      ];
     }
-    return mapped;
+    return [{ role: 'system', content: systemPrompt }, ...mapped];
   }
 
   private async queryOpenRouterMultiTurn(
@@ -432,7 +463,7 @@ export class OpenRouterProvider {
     systemPrompt?: string
   ): Promise<{ content: string; tokensUsed?: number }> {
     const truncatedHistory = this.truncateHistory(history, systemPrompt);
-    const messages = this.conversationToOpenAIMessages(truncatedHistory, systemPrompt);
+    const messages = this.conversationToOpenAIMessages(truncatedHistory, systemPrompt, model);
     const totalChars = truncatedHistory.reduce((sum, m) => sum + m.content.length, 0);
     const estimatedTokens = this.estimateTokens(truncatedHistory.map(m => m.content).join(''));
 
@@ -514,14 +545,30 @@ export class OpenRouterProvider {
       const outputTokens = data.usage?.completion_tokens || 0;
       const estimatedCost = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);
 
+      // OpenRouter exposes cache hits via prompt_tokens_details (NOT Anthropic's
+      // native naming). Present only when cache_control was honored upstream.
+      // Ref: https://openrouter.ai/docs/features/prompt-caching
+      const cachedTokens = data.usage?.prompt_tokens_details?.cached_tokens;
+      const cacheWriteTokens = data.usage?.prompt_tokens_details?.cache_write_tokens;
+
       logger.info('SDK', 'OpenRouter API usage', {
         model,
         inputTokens,
         outputTokens,
         totalTokens: tokensUsed,
+        cachedTokens: cachedTokens || 0,
+        cacheWriteTokens: cacheWriteTokens || 0,
         estimatedCostUSD: estimatedCost.toFixed(4),
         messagesInContext: truncatedHistory.length
       });
+
+      if ((cachedTokens && cachedTokens > 0) || (cacheWriteTokens && cacheWriteTokens > 0)) {
+        logger.debug('SDK', 'OpenRouter prompt cache activity', {
+          model,
+          cachedTokens: cachedTokens || 0,
+          cacheWriteTokens: cacheWriteTokens || 0
+        });
+      }
 
       if (tokensUsed > 50000) {
         logger.warn('SDK', 'High token usage detected - consider reducing context', {
