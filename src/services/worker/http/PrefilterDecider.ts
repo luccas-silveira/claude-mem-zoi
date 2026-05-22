@@ -42,6 +42,45 @@ function hasIsErrorFlag(response: unknown): boolean {
   return obj.isError === true || obj.is_error === true;
 }
 
+/**
+ * Real Bash output length = stdout + stderr (skips field-name overhead).
+ *
+ * Claude Code's Bash tool_response carries ~50 chars of envelope (stdout,
+ * stderr, interrupted, isImage, noOutputExpected keys) even for empty
+ * output, so stringify-length comparison was incorrectly forgiving. When
+ * the response is the expected object shape, measure the actual payload.
+ * Falls back to stringified length for non-object responses.
+ */
+function bashOutputLen(response: unknown, stringified: string): number {
+  if (response && typeof response === 'object') {
+    const obj = response as { stdout?: unknown; stderr?: unknown };
+    if (typeof obj.stdout === 'string' || typeof obj.stderr === 'string') {
+      const out = typeof obj.stdout === 'string' ? obj.stdout.length : 0;
+      const err = typeof obj.stderr === 'string' ? obj.stderr.length : 0;
+      return out + err;
+    }
+  }
+  return stringified.length;
+}
+
+/**
+ * Real Read content length (skips field-name overhead).
+ *
+ * Like Bash, Read responses carry envelope keys. When the shape is the
+ * expected object with a `content` / `file` / `text` string, measure that
+ * string directly. Falls back to stringified length otherwise.
+ */
+function readContentLen(response: unknown, stringified: string): number {
+  if (response && typeof response === 'object') {
+    const obj = response as Record<string, unknown>;
+    for (const key of ['content', 'file', 'text', 'output']) {
+      const v = obj[key];
+      if (typeof v === 'string') return v.length;
+    }
+  }
+  return stringified.length;
+}
+
 function extractFilePath(toolInput: unknown): string | undefined {
   if (!toolInput || typeof toolInput !== 'object') return undefined;
   const input = toolInput as { file_path?: unknown; notebook_path?: unknown };
@@ -67,10 +106,11 @@ export function decidePrefilter(
     ? JSON.stringify(payload.toolInput)
     : '{}';
 
-  // 1. bash_trivial
+  // 1. bash_trivial — measures actual stdout+stderr, not envelope+fields.
   if (toolName === 'Bash') {
+    const outLen = bashOutputLen(payload.toolResponse, responseStr);
     if (
-      responseStr.length <= bashMin &&
+      outLen <= bashMin &&
       !containsErrorMarker(responseStr) &&
       !hasIsErrorFlag(payload.toolResponse)
     ) {
@@ -89,9 +129,11 @@ export function decidePrefilter(
     }
   }
 
-  // 3. read_small (must come BEFORE read_dup — order matters)
+  // 3. read_small (must come BEFORE read_dup — order matters).
+  // Measures actual content, not envelope+fields.
   if (toolName === 'Read') {
-    if (responseStr.length <= readMin && !containsErrorMarker(responseStr)) {
+    const contentLen = readContentLen(payload.toolResponse, responseStr);
+    if (contentLen <= readMin && !containsErrorMarker(responseStr)) {
       return { skip: true, reason: 'read_small' };
     }
 
