@@ -11,6 +11,8 @@ import { USER_SETTINGS_PATH } from '../../../shared/paths.js';
 import { getProjectContext } from '../../../utils/project-name.js';
 import { normalizePlatformSource } from '../../../shared/platform-source.js';
 import { PrivacyCheckValidator } from '../validation/PrivacyCheckValidator.js';
+import { decidePrefilter, updateReadCache } from './PrefilterDecider.js';
+import { sessionReadCache } from './SessionReadCache.js';
 import { EventEmitter } from 'events';
 
 export interface SummaryStoredEvent {
@@ -121,6 +123,14 @@ export function ingestObservation(payload: ObservationPayload): IngestResult {
     if (filePath && filePath.includes('session-memory')) {
       return { ok: true, status: 'skipped', reason: 'session_memory_meta' };
     }
+  }
+
+  if (settings.CLAUDE_MEM_PREFILTER_ENABLED === 'true') {
+    const decision = decidePrefilter(payload, sessionReadCache, settings);
+    if (decision.skip) {
+      return { ok: true, status: 'skipped', reason: decision.reason };
+    }
+    updateReadCache(payload, sessionReadCache);
   }
 
   const store = dbManager.getSessionStore();

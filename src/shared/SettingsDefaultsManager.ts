@@ -9,7 +9,12 @@ export interface SettingsDefaults {
   CLAUDE_MEM_WORKER_PORT: string;
   CLAUDE_MEM_WORKER_HOST: string;
   CLAUDE_MEM_SKIP_TOOLS: string;
-  CLAUDE_MEM_PROVIDER: string;  
+  CLAUDE_MEM_PREFILTER_ENABLED: string;
+  CLAUDE_MEM_PREFILTER_BASH_MIN_OUTPUT: string;
+  CLAUDE_MEM_PREFILTER_READ_MIN_BYTES: string;
+  CLAUDE_MEM_PREFILTER_MAX_TOTAL_CHARS: string;
+  CLAUDE_MEM_PREFILTER_DEDUP_READS: string;
+  CLAUDE_MEM_PROVIDER: string;
   CLAUDE_MEM_CLAUDE_AUTH_METHOD: string;  
   CLAUDE_MEM_GEMINI_API_KEY: string;
   CLAUDE_MEM_GEMINI_MODEL: string;  
@@ -81,6 +86,11 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_WORKER_PORT: String(37700 + ((process.getuid?.() ?? 77) % 100)),
     CLAUDE_MEM_WORKER_HOST: '127.0.0.1',
     CLAUDE_MEM_SKIP_TOOLS: 'ListMcpResourcesTool,SlashCommand,Skill,TodoWrite,AskUserQuestion',
+    CLAUDE_MEM_PREFILTER_ENABLED: 'true',
+    CLAUDE_MEM_PREFILTER_BASH_MIN_OUTPUT: '80',
+    CLAUDE_MEM_PREFILTER_READ_MIN_BYTES: '500',
+    CLAUDE_MEM_PREFILTER_MAX_TOTAL_CHARS: '50000',
+    CLAUDE_MEM_PREFILTER_DEDUP_READS: 'true',
     CLAUDE_MEM_PROVIDER: 'claude',  // Default to Claude
     CLAUDE_MEM_CLAUDE_AUTH_METHOD: 'subscription',  // Default to logged-in Claude SDK auth (not API key)
     CLAUDE_MEM_GEMINI_API_KEY: '',  // Empty by default, can be set via UI or env
