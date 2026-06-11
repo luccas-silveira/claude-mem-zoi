@@ -13,6 +13,7 @@ import type {
   TimelineItem,
   PriorMessages,
 } from './types.js';
+import type { ObservationDigestRow } from '../sqlite/types.js';
 import { SUMMARY_LOOKAHEAD } from './types.js';
 
 export function queryObservations(
@@ -172,6 +173,80 @@ export function querySummariesMulti(
     ORDER BY ss.created_at_epoch DESC
     LIMIT ?
   `).all(...projects, ...projects, config.sessionCount + SUMMARY_LOOKAHEAD) as SessionSummary[];
+}
+
+/**
+ * Plan F.3 (Fase 4): Pull the N most recent observation_digests rows for a
+ * single project. Returns [] WITHOUT querying when digestCount <= 0 so the
+ * feature is truly off when disabled (no DB hit on every context build).
+ *
+ * Ordered DESC by period_start_epoch so callers can choose to reverse for
+ * oldest-first rendering. Mirrors the shape of queryObservations / querySummaries.
+ */
+export function queryDigests(
+  db: SessionStore,
+  project: string,
+  config: ContextConfig,
+): ObservationDigestRow[] {
+  if (config.digestCount <= 0) return [];
+
+  return db.db.prepare(`
+    SELECT
+      id,
+      project,
+      period_start_epoch,
+      period_end_epoch,
+      period_kind,
+      obs_count,
+      dominant_types,
+      dominant_concepts,
+      summary_text,
+      facts,
+      files_touched,
+      created_at,
+      created_at_epoch
+    FROM observation_digests
+    WHERE project = ?
+    ORDER BY period_start_epoch DESC
+    LIMIT ?
+  `).all(project, config.digestCount) as ObservationDigestRow[];
+}
+
+/**
+ * Plan F.3 (Fase 4): Multi-project variant of queryDigests. Pulls the N most
+ * recent digests across the given projects combined, DESC by period_start_epoch.
+ * Same disabled-fast-path as the single-project version.
+ */
+export function queryDigestsMulti(
+  db: SessionStore,
+  projects: string[],
+  config: ContextConfig,
+): ObservationDigestRow[] {
+  if (config.digestCount <= 0) return [];
+  if (projects.length === 0) return [];
+
+  const projectPlaceholders = projects.map(() => '?').join(',');
+
+  return db.db.prepare(`
+    SELECT
+      id,
+      project,
+      period_start_epoch,
+      period_end_epoch,
+      period_kind,
+      obs_count,
+      dominant_types,
+      dominant_concepts,
+      summary_text,
+      facts,
+      files_touched,
+      created_at,
+      created_at_epoch
+    FROM observation_digests
+    WHERE project IN (${projectPlaceholders})
+    ORDER BY period_start_epoch DESC
+    LIMIT ?
+  `).all(...projects, config.digestCount) as ObservationDigestRow[];
 }
 
 function cwdToDashed(cwd: string): string {

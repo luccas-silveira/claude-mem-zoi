@@ -15,6 +15,10 @@ export interface ContextConfig {
   fullObservationCount: number;
   sessionCount: number;
 
+  // Plan F.3 (Fase 4): how many observation_digests rows to mix into context.
+  // 0 disables the feature entirely (no DB query, no header).
+  digestCount: number;
+
   showReadTokens: boolean;
   showWorkTokens: boolean;
   showSavingsAmount: boolean;

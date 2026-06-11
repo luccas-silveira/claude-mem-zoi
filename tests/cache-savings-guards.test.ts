@@ -144,6 +144,30 @@ describe('Fase 4 — mode JSON slim + programmatic guidance', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Plan F.3 (Fase 4) — observation_digests mixed into context injection.
+// These markers ensure the digest pipeline (query + render + setting) stays
+// wired up so future refactors don't silently un-do the historical-context block.
+// ---------------------------------------------------------------------------
+describe('Plan F.3 (Fase 4) — context digest injection markers', () => {
+  it('SettingsDefaultsManager exposes CLAUDE_MEM_CONTEXT_DIGESTS', () => {
+    const src = read('src/shared/SettingsDefaultsManager.ts');
+    expect(src).toContain('CLAUDE_MEM_CONTEXT_DIGESTS');
+  });
+
+  it('ObservationCompiler exports queryDigests and queryDigestsMulti', () => {
+    const src = read('src/services/context/ObservationCompiler.ts');
+    expect(src).toMatch(/export\s+function\s+queryDigests\b/);
+    expect(src).toMatch(/export\s+function\s+queryDigestsMulti\b/);
+  });
+
+  it('DigestFormatter.ts exists and exports renderDigests', () => {
+    expect(exists('src/services/context/formatters/DigestFormatter.ts')).toBe(true);
+    const src = read('src/services/context/formatters/DigestFormatter.ts');
+    expect(src).toMatch(/export\s+function\s+renderDigests\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Anti-pattern guards — these are what catch regressions, not the wiring.
 // ---------------------------------------------------------------------------
 describe('Anti-pattern — never attach cache_control to user/assistant turns', () => {

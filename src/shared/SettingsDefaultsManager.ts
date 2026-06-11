@@ -51,6 +51,7 @@ export interface SettingsDefaults {
   CLAUDE_MEM_CONTEXT_FULL_COUNT: string;
   CLAUDE_MEM_CONTEXT_FULL_FIELD: string;
   CLAUDE_MEM_CONTEXT_SESSION_COUNT: string;
+  CLAUDE_MEM_CONTEXT_DIGESTS: string;
   CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY: string;
   CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE: string;
   CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT: string;
@@ -132,6 +133,7 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_CONTEXT_FULL_COUNT: '0',
     CLAUDE_MEM_CONTEXT_FULL_FIELD: 'narrative',
     CLAUDE_MEM_CONTEXT_SESSION_COUNT: '10',
+    CLAUDE_MEM_CONTEXT_DIGESTS: '5',  // Plan F.3 (Fase 4): how many observation_digests rows to mix into context. 0 disables.
     CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY: 'true',
     CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE: 'false',
     CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT: 'true',
