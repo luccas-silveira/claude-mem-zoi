@@ -23,6 +23,7 @@ import type { ObservationRow, ObservationDigestRow } from '../../sqlite/types.js
 import type { ChromaSync } from '../../sync/ChromaSync.js';
 import { buildDigestPrompt } from '../../../sdk/prompts.js';
 import { parseDigest } from '../../../sdk/parser.js';
+import { isClassified } from '../provider-errors.js';
 import { listMissingPeriods, type PeriodKind } from './periods.js';
 
 const MAX_DIGESTS_PER_RUN = 50;
@@ -305,8 +306,18 @@ export class DigestGenerator {
     } catch (err) {
       // Abort propagation: not a digest failure per se.
       if (signal.aborted) return;
-      logger.warn('DIGEST', 'compressDigest failed', { project, label },
-        err instanceof Error ? err : new Error(String(err)));
+      // ClaudeProvider's compressDigest deliberately throws an
+      // 'unrecoverable' ClassifiedProviderError because the Agent SDK
+      // loop has no clean single-shot path. Demote those to DEBUG so the
+      // log isn't spammed once per period when a user runs claude-mem
+      // with Claude as the active provider; everything else stays at WARN.
+      const classifiedUnrecoverable = isClassified(err) && err.kind === 'unrecoverable';
+      if (classifiedUnrecoverable) {
+        logger.debug('DIGEST', 'compressDigest unsupported by provider, skipping period', { project, label });
+      } else {
+        logger.warn('DIGEST', 'compressDigest failed', { project, label },
+          err instanceof Error ? err : new Error(String(err)));
+      }
       result.failed += 1;
       return;
     }

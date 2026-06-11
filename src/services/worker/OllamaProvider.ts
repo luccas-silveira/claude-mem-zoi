@@ -481,6 +481,84 @@ export class OllamaProvider {
     return data;
   }
 
+  /**
+   * Plan F.2 (Fase 3) — multi-provider parity: single-shot non-streaming digest
+   * compression call. Mirrors DeepSeekProvider.compressDigest in shape but
+   * targets Ollama's OpenAI-compatible /chat/completions endpoint. `stream:false`
+   * because we want one parseable JSON envelope, not SSE chunks.
+   *
+   * No session state, no DB writes, signal-aware. Caller (DigestGenerator) is
+   * responsible for per-period failure handling.
+   */
+  async compressDigest(prompt: string, signal: AbortSignal): Promise<string> {
+    const config = getOllamaConfig();
+
+    if (signal.aborted) {
+      throw new Error('Digest compression aborted before request');
+    }
+
+    // Lazy import so this module's import graph stays unchanged for non-digest paths.
+    const { DIGEST_SYSTEM_PROMPT } = await import('../../sdk/prompts.js');
+
+    const url = `${normalizeBaseUrl(config.baseUrl)}/chat/completions`;
+    const messages: OpenAIMessage[] = [
+      { role: 'system', content: DIGEST_SYSTEM_PROMPT },
+      { role: 'user', content: prompt },
+    ];
+
+    logger.debug('SDK', `Querying Ollama single-shot (digest, ${config.model})`, {
+      promptChars: prompt.length,
+    });
+
+    const data = await withRetry<{ content: string }>(async (attemptSignal) => {
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: config.model,
+            messages: this.disableThinking(messages, config.model),
+            stream: false,
+            temperature: 0.2,
+            max_tokens: 2048,
+            options: {
+              num_ctx: config.numCtx,
+            },
+          }),
+          signal: attemptSignal,
+        });
+      } catch (networkError: unknown) {
+        throw classifyOllamaError({ cause: networkError, model: config.model });
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw classifyOllamaError({
+          status: response.status,
+          bodyText: errorText,
+          cause: new Error(`Ollama API error: ${response.status} - ${errorText}`),
+          model: config.model,
+        });
+      }
+
+      const json = await response.json() as OllamaStreamChunk;
+      if (json.error) {
+        throw classifyOllamaError({
+          bodyText: `${json.error.code ?? ''} ${json.error.message ?? ''}`,
+          cause: new Error(`Ollama API error: ${json.error.code ?? 'unknown'} - ${json.error.message ?? ''}`),
+          model: config.model,
+        });
+      }
+      const content = json.choices?.[0]?.message?.content ?? '';
+      return { content };
+    }, { label: `Ollama digest ${config.model}`, perAttemptTimeoutMs: 300_000, abortSignal: signal });
+
+    return data.content;
+  }
+
   private async readStreamingResponse(
     response: Response,
     model: string,

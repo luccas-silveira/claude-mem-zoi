@@ -520,6 +520,88 @@ export class GeminiProvider {
     return { content, tokensUsed };
   }
 
+  /**
+   * Plan F.2 (Fase 3) — multi-provider parity: single-shot non-streaming digest
+   * compression call. Mirrors DeepSeekProvider.compressDigest in shape (no
+   * session state, no DB writes, signal-aware, ClassifiedProviderError on
+   * failure) but speaks Gemini's `:generateContent` REST shape: the system
+   * prompt goes into top-level `systemInstruction`, and the user message is the
+   * sole entry in `contents`.
+   *
+   * Caller (DigestGenerator) catches per-period failures and increments
+   * `failed`. We throw on quota/auth/network failure via `classifyGeminiError`.
+   */
+  async compressDigest(prompt: string, signal: AbortSignal): Promise<string> {
+    const { apiKey, model, rateLimitingEnabled } = this.getGeminiConfig();
+    if (!apiKey) {
+      throw new Error('Gemini API key not configured. Set CLAUDE_MEM_GEMINI_API_KEY in settings or GEMINI_API_KEY environment variable.');
+    }
+
+    if (signal.aborted) {
+      throw new Error('Digest compression aborted before request');
+    }
+
+    // Lazy import so this module's import graph stays unchanged for non-digest paths.
+    const { DIGEST_SYSTEM_PROMPT } = await import('../../sdk/prompts.js');
+
+    await enforceRateLimitForModel(model, rateLimitingEnabled);
+
+    const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
+    let priorRequestId: string | null = null;
+
+    logger.debug('SDK', `Querying Gemini single-shot (digest, ${model})`, {
+      promptChars: prompt.length,
+    });
+
+    const data = await withRetry<GeminiResponse>(async (attemptSignal) => {
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(priorRequestId ? { 'x-claude-mem-prior-request-id': priorRequestId } : {}),
+          },
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ text: prompt }] },
+            ],
+            systemInstruction: {
+              parts: [{ text: DIGEST_SYSTEM_PROMPT }],
+            },
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 2048,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          }),
+          signal: attemptSignal,
+        });
+      } catch (networkError: unknown) {
+        throw classifyGeminiError({ cause: networkError });
+      }
+
+      const requestId = response.headers.get('x-goog-request-id') ?? response.headers.get('x-request-id');
+      if (requestId) priorRequestId = requestId;
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw classifyGeminiError({
+          status: response.status,
+          bodyText: errorBody,
+          headers: response.headers,
+          cause: new Error(`Gemini API error: ${response.status} - ${errorBody}`),
+          ...(requestId ? { requestId } : {}),
+        });
+      }
+
+      return await response.json() as GeminiResponse;
+    }, { label: `Gemini digest ${model}`, perAttemptTimeoutMs: 60_000, abortSignal: signal });
+
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    return content;
+  }
+
   private getGeminiConfig(): { apiKey: string; model: GeminiModel; rateLimitingEnabled: boolean } {
     const settingsPath = paths.settings();
     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);

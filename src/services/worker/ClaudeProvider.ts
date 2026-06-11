@@ -469,4 +469,32 @@ export class ClaudeProvider {
     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
     return settings.CLAUDE_MEM_MODEL;
   }
+
+  /**
+   * Plan F.2 (Fase 3) — multi-provider parity: ClaudeProvider routes through
+   * the `@anthropic-ai/claude-agent-sdk` `query()` agent loop (which spawns a
+   * Claude Code subprocess), not a raw HTTP client. There is no clean way to
+   * make a single-shot compression call without booting the full agent for
+   * one turn, which would be wasteful and would tangle the agent loop with a
+   * non-session-bound background job.
+   *
+   * Deliberate choice: throw `ClassifiedProviderError` with kind='unrecoverable'.
+   * The DigestGenerator's `processOnePeriod` catches the throw, increments
+   * `failed`, logs a warning, and moves on — so picking Claude as the primary
+   * provider does NOT break the digest pipeline: it just means digests aren't
+   * generated until the user configures a side-channel provider
+   * (DeepSeek / Gemini / Ollama / OpenRouter) for compression.
+   *
+   * Method exists (so the DigestGenerator duck-type guard
+   * `typeof provider.compressDigest === 'function'` passes) and throws once
+   * per period. We keep the kind 'unrecoverable' so the withRetry harness
+   * (if anyone wraps this call) doesn't waste attempts on a structurally
+   * impossible operation.
+   */
+  async compressDigest(_prompt: string, _signal: AbortSignal): Promise<string> {
+    throw new ClassifiedProviderError(
+      'Claude SDK agent loop does not support one-shot digest compression. Configure DeepSeek/Gemini/Ollama/OpenRouter for digest generation.',
+      { kind: 'unrecoverable', cause: new Error('compressDigest not supported on ClaudeProvider') },
+    );
+  }
 }

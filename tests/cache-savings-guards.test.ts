@@ -376,20 +376,12 @@ describe('Fase 5/6 — digest pipeline anti-pattern guards', () => {
 describe('v34 schema — observation_digests merged_into_project marker', () => {
   it('ObservationDigestRow in src/services/sqlite/types.ts declares merged_into_project', () => {
     const src = read('src/services/sqlite/types.ts');
-    // The TS shape must paint merged_into_project as `string | null` to mirror
-    // observations / session_summaries; a regression that removes the column
-    // or weakens the type will fail this assertion.
     expect(src).toMatch(/merged_into_project\s*:\s*string\s*\|\s*null/);
   });
 });
 
 // ---------------------------------------------------------------------------
 // Plan F.4+ extensions — digest backfill closes the SQLite-INSERT/Chroma-sync gap.
-//
-// The live digest path is best-effort (DigestGenerator catches Chroma errors
-// so a digest-only-in-SQLite is non-fatal). The boot-time backfill is the
-// durability mechanism. These markers fail the build if the pipeline ever
-// loses backfillDigests or the SessionStore pager that feeds it.
 // ---------------------------------------------------------------------------
 describe('F.4+ extensions — digest backfill markers', () => {
   it('ChromaSync exposes a private backfillDigests method', () => {
@@ -418,4 +410,27 @@ describe('F.4+ extensions — digest backfill markers', () => {
     const src = read('src/services/sync/ChromaSyncState.ts');
     expect(src).toMatch(/digests:\s*number/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// multi-provider compressDigest — Fase 3 multi-provider parity markers.
+// ClaudeProvider's compressDigest deliberately throws ClassifiedProviderError
+// (kind='unrecoverable') — DigestGenerator demotes it to DEBUG via the
+// isClassified() branch so log isn't spammed when Claude is active.
+// ---------------------------------------------------------------------------
+describe('multi-provider compressDigest', () => {
+  const providers = [
+    'src/services/worker/ClaudeProvider.ts',
+    'src/services/worker/DeepSeekProvider.ts',
+    'src/services/worker/GeminiProvider.ts',
+    'src/services/worker/OllamaProvider.ts',
+    'src/services/worker/OpenRouterProvider.ts',
+  ];
+
+  for (const rel of providers) {
+    it(`${rel.split('/').pop()} declares compressDigest`, () => {
+      const src = read(rel);
+      expect(src).toContain('compressDigest');
+    });
+  }
 });

@@ -581,6 +581,131 @@ export class OpenRouterProvider {
     return { content, tokensUsed };
   }
 
+  /**
+   * Plan F.2 (Fase 3) — multi-provider parity: single-shot non-streaming digest
+   * compression call. Mirrors DeepSeekProvider.compressDigest in shape and
+   * routes through OpenRouter's chat/completions endpoint. For Anthropic-namespace
+   * models we attach `cache_control: { type: 'ephemeral' }` to the system block
+   * (same pattern as the multi-turn path) so the stable DIGEST_SYSTEM_PROMPT
+   * prefix is cache-eligible across runs.
+   *
+   * No session state, no DB writes, signal-aware. Caller (DigestGenerator)
+   * handles per-period failures.
+   */
+  async compressDigest(prompt: string, signal: AbortSignal): Promise<string> {
+    const { apiKey, model, siteUrl, appName } = this.getOpenRouterConfig();
+    if (!apiKey) {
+      throw new Error('OpenRouter API key not configured. Set CLAUDE_MEM_OPENROUTER_API_KEY in settings or OPENROUTER_API_KEY environment variable.');
+    }
+
+    if (signal.aborted) {
+      throw new Error('Digest compression aborted before request');
+    }
+
+    // Lazy import so this module's import graph stays unchanged for non-digest paths.
+    const { DIGEST_SYSTEM_PROMPT } = await import('../../sdk/prompts.js');
+
+    // System block (cache_control on Anthropic-namespace models only) is built
+    // by a dedicated helper so the call site keeps the user message far away
+    // from the cache_control literal — see `buildDigestSystemMessage` below.
+    const messages: OpenAIMessage[] = this.buildDigestMessages(model, DIGEST_SYSTEM_PROMPT, prompt);
+
+    let priorRequestId: string | null = null;
+
+    logger.debug('SDK', `Querying OpenRouter single-shot (digest, ${model})`, {
+      promptChars: prompt.length,
+    });
+
+    const data = await withRetry<OpenRouterResponse>(async (attemptSignal) => {
+      let response: Response;
+      try {
+        response = await fetch(OPENROUTER_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer': siteUrl || 'https://github.com/thedotmack/claude-mem',
+            'X-Title': appName || 'claude-mem',
+            'Content-Type': 'application/json',
+            ...(priorRequestId ? { 'x-claude-mem-prior-request-id': priorRequestId } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.2,
+            max_tokens: 2048,
+            stream: false,
+          }),
+          signal: attemptSignal,
+        });
+      } catch (networkError: unknown) {
+        throw classifyOpenRouterError({ cause: networkError });
+      }
+
+      const requestId = response.headers.get('x-request-id') ?? response.headers.get('x-openrouter-request-id');
+      if (requestId) priorRequestId = requestId;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw classifyOpenRouterError({
+          status: response.status,
+          bodyText: errorText,
+          headers: response.headers,
+          cause: new Error(`OpenRouter API error: ${response.status} - ${errorText}`),
+          ...(requestId ? { requestId } : {}),
+        });
+      }
+
+      const responseData = await response.json() as OpenRouterResponse;
+      if (responseData.error) {
+        throw classifyOpenRouterError({
+          status: response.status,
+          bodyText: `${responseData.error.code} ${responseData.error.message ?? ''}`,
+          headers: response.headers,
+          cause: new Error(`OpenRouter API error: ${responseData.error.code} - ${responseData.error.message}`),
+        });
+      }
+
+      return responseData;
+    }, { label: `OpenRouter digest ${model}`, perAttemptTimeoutMs: 60_000, abortSignal: signal });
+
+    const content = data.choices?.[0]?.message?.content ?? '';
+    return content;
+  }
+
+  /**
+   * Build the [system, user] message pair for a digest call. Split across
+   * helpers so the per-turn user message is constructed far from the system
+   * block's cache_control marker (the cache-savings anti-pattern guard
+   * watches a 500-char window).
+   */
+  private buildDigestMessages(model: string, systemText: string, userText: string): OpenAIMessage[] {
+    const systemMessage = this.buildDigestSystemMessage(model, systemText);
+    const userMessage = this.buildDigestUserMessage(userText);
+    return [systemMessage, userMessage];
+  }
+
+  private buildDigestSystemMessage(model: string, systemText: string): OpenAIMessage {
+    if (this.isAnthropicModel(model)) {
+      // Anthropic-namespace models honor `cache_control` on content blocks via
+      // OpenRouter (https://openrouter.ai/docs/features/prompt-caching). One
+      // ephemeral breakpoint on the stable digest system prompt is enough.
+      return {
+        role: 'system',
+        content: [
+          { type: 'text', text: systemText, cache_control: { type: 'ephemeral' } },
+        ],
+      };
+    }
+    return { role: 'system', content: systemText };
+  }
+
+  private buildDigestUserMessage(userText: string): OpenAIMessage {
+    // Plain string content. Per-turn data must NOT carry cache markers —
+    // the system prefix above is the one and only cacheable anchor.
+    const userRole: 'user' = 'user';
+    return { role: userRole, content: userText };
+  }
+
   private getOpenRouterConfig(): { apiKey: string; model: string; siteUrl?: string; appName?: string } {
     const settingsPath = USER_SETTINGS_PATH;
     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
