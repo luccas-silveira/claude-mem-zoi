@@ -382,3 +382,40 @@ describe('v34 schema — observation_digests merged_into_project marker', () => 
     expect(src).toMatch(/merged_into_project\s*:\s*string\s*\|\s*null/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan F.4+ extensions — digest backfill closes the SQLite-INSERT/Chroma-sync gap.
+//
+// The live digest path is best-effort (DigestGenerator catches Chroma errors
+// so a digest-only-in-SQLite is non-fatal). The boot-time backfill is the
+// durability mechanism. These markers fail the build if the pipeline ever
+// loses backfillDigests or the SessionStore pager that feeds it.
+// ---------------------------------------------------------------------------
+describe('F.4+ extensions — digest backfill markers', () => {
+  it('ChromaSync exposes a private backfillDigests method', () => {
+    const src = read('src/services/sync/ChromaSync.ts');
+    expect(src).toMatch(/private\s+async\s+backfillDigests\s*\(/);
+  });
+
+  it('SessionStore exposes listDigestsAboveId', () => {
+    const src = read('src/services/sqlite/SessionStore.ts');
+    expect(src).toMatch(/\blistDigestsAboveId\s*\(/);
+  });
+
+  it('runBackfillPipeline calls backfillDigests after backfillSummaries', () => {
+    const src = read('src/services/sync/ChromaSync.ts');
+    const pipelineMatch = src.match(/private\s+async\s+runBackfillPipeline[\s\S]+?\n  }\n/);
+    expect(pipelineMatch).not.toBeNull();
+    const body = pipelineMatch![0];
+    const summariesIdx = body.indexOf('backfillSummaries');
+    const digestsIdx = body.indexOf('backfillDigests');
+    expect(summariesIdx).toBeGreaterThan(-1);
+    expect(digestsIdx).toBeGreaterThan(-1);
+    expect(digestsIdx).toBeGreaterThan(summariesIdx);
+  });
+
+  it('ProjectWatermarks declares a digests field', () => {
+    const src = read('src/services/sync/ChromaSyncState.ts');
+    expect(src).toMatch(/digests:\s*number/);
+  });
+});

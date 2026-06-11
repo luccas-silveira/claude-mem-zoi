@@ -2838,6 +2838,29 @@ export class SessionStore {
   }
 
   /**
+   * Plan F.4+ extension: paginate digests above a watermark id for a project.
+   *
+   * Used by ChromaSync.backfillDigests to close the gap where a worker that
+   * crashed between `insertObservationDigest` (SQLite) and `syncDigest`
+   * (Chroma) leaves the new digest unindexed. The Chroma sync path is
+   * best-effort by design (the digest UNIQUE constraint guarantees SQLite
+   * stays authoritative); the backfill pipeline catches up on next boot.
+   *
+   * Returns digests with id > fromId ordered by id ASC so the caller can
+   * advance its watermark monotonically.
+   */
+  listDigestsAboveId(project: string, fromId: number, limit: number): ObservationDigestRow[] {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM observation_digests
+      WHERE project = ? AND id > ?
+      ORDER BY id ASC
+      LIMIT ?
+    `);
+    return stmt.all(project, fromId, limit) as ObservationDigestRow[];
+  }
+
+  /**
    * Plan F.2 (Fase 3): Find the oldest observation epoch for a project.
    * Returns null if the project has no observations.
    */

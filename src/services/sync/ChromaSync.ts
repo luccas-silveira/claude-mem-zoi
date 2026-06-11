@@ -583,6 +583,7 @@ export class ChromaSync {
     observations: Set<number>;
     summaries: Set<number>;
     prompts: Set<number>;
+    digests: Set<number>;
   }> {
     const targetProject = projectOverride ?? this.project;
     await this.ensureCollectionExists();
@@ -592,9 +593,10 @@ export class ChromaSync {
     const observationIds = new Set<number>();
     const summaryIds = new Set<number>();
     const promptIds = new Set<number>();
+    const digestIds = new Set<number>();
 
     let offset = 0;
-    const limit = 1000; 
+    const limit = 1000;
 
     logger.info('CHROMA_SYNC', 'Fetching existing Chroma document IDs...', { project: targetProject });
 
@@ -610,7 +612,7 @@ export class ChromaSync {
       const metadatas = result?.metadatas || [];
 
       if (metadatas.length === 0) {
-        break; 
+        break;
       }
 
       for (const meta of metadatas) {
@@ -622,6 +624,8 @@ export class ChromaSync {
             summaryIds.add(sqliteId);
           } else if (meta.doc_type === 'user_prompt') {
             promptIds.add(sqliteId);
+          } else if (meta.doc_type === 'digest') {
+            digestIds.add(sqliteId);
           }
         }
       }
@@ -640,10 +644,16 @@ export class ChromaSync {
       observations: observationIds.size,
       summaries: summaryIds.size,
       prompts: promptIds.size,
-      total: observationIds.size + summaryIds.size + promptIds.size
+      digests: digestIds.size,
+      total: observationIds.size + summaryIds.size + promptIds.size + digestIds.size
     });
 
-    return { observations: observationIds, summaries: summaryIds, prompts: promptIds };
+    return {
+      observations: observationIds,
+      summaries: summaryIds,
+      prompts: promptIds,
+      digests: digestIds,
+    };
   }
 
   async bootstrapWatermarksFromChroma(project: string): Promise<void> {
@@ -656,7 +666,8 @@ export class ChromaSync {
     ChromaSyncState.replace(project, {
       observations: max(existing.observations),
       summaries: max(existing.summaries),
-      prompts: max(existing.prompts)
+      prompts: max(existing.prompts),
+      digests: max(existing.digests)
     });
     logger.info('CHROMA_SYNC', 'Bootstrapped watermarks from Chroma', {
       project,
@@ -693,6 +704,12 @@ export class ChromaSync {
   ): Promise<void> {
     const allDocs = await this.backfillObservations(db, backfillProject, watermarks.observations);
     const summaryDocs = await this.backfillSummaries(db, backfillProject, watermarks.summaries);
+    // Plan F.4+ extension: digests run AFTER summaries. The digest pipeline is
+    // best-effort on the live path (DigestGenerator catches Chroma errors so a
+    // SQLite-only insert is not fatal). The backfill pass closes that gap on
+    // next boot — without it, a worker SIGKILLed between insertObservationDigest
+    // and syncDigest leaves a permanently unindexed digest.
+    const digestResult = await this.backfillDigests(db, backfillProject, watermarks.digests);
     const promptDocs = await this.backfillPrompts(db, backfillProject, watermarks.prompts);
 
     logger.info('CHROMA_SYNC', 'Smart backfill complete', {
@@ -700,6 +717,7 @@ export class ChromaSync {
       synced: {
         observationDocs: allDocs.length,
         summaryDocs: summaryDocs.length,
+        digests: digestResult.synced,
         promptDocs: promptDocs.length
       },
       watermarks: ChromaSyncState.get(backfillProject)
@@ -890,6 +908,123 @@ export class ChromaSync {
     }
 
     return summaryDocs;
+  }
+
+  /**
+   * Plan F.4+ extension: backfill `observation_digests` rows whose Chroma
+   * sync was skipped or failed on the live path.
+   *
+   * The live digest path is best-effort: DigestGenerator wraps `syncDigest`
+   * in try/catch so a transient Chroma outage never aborts a digest run, and
+   * `syncDigest` itself does NOT bump a watermark. That design leaves a gap —
+   * if the worker is SIGKILLed between `insertObservationDigest` (SQLite) and
+   * `syncDigest` (Chroma), the new digest never gets indexed. This backfill
+   * closes that gap on next boot by paging through digests with
+   * `id > watermark`, calling `syncDigest` for each, and advancing the
+   * watermark transactionally: a Chroma error mid-pass freezes the watermark
+   * at the last fully-synced digest so the next run picks up exactly where
+   * this one stopped.
+   *
+   * Mirrors `backfillSummaries` for the watermark-progression semantics, but
+   * pages via `SessionStore.listDigestsAboveId` instead of an inline query so
+   * the access pattern stays out of ChromaSync.
+   */
+  private async backfillDigests(
+    db: SessionStore,
+    backfillProject: string,
+    watermark: number
+  ): Promise<{ synced: number; lastId: number }> {
+    const PAGE_SIZE = 100;
+    let synced = 0;
+    let lastId = watermark;
+    let hadFailure = false;
+
+    // Loop guard: bail if a page returns the same id as the previous head — that
+    // would only happen if listDigestsAboveId ever stops respecting `id > ?`,
+    // and lets us fail loudly instead of spinning forever.
+    let safety = 100_000;
+
+    while (safety-- > 0) {
+      const page = db.listDigestsAboveId(backfillProject, lastId, PAGE_SIZE);
+      if (page.length === 0) break;
+
+      let progressedInPage = false;
+      for (const digest of page) {
+        // Format + write directly (rather than calling `syncDigest`) so we can
+        // distinguish a full write from a partial one. `addDocuments()` swallows
+        // per-batch failures and returns a count — we treat any short write as
+        // a transactional failure and freeze the watermark, so the next boot
+        // retries this digest. `syncDigest` on the live path tolerates partial
+        // writes by design; backfill is the catch-up path and must be stricter.
+        const documents = this.formatDigestDocs(digest);
+
+        // No docs to write (e.g. defensive empty summary + null facts). Treat
+        // as success — there's nothing to retry — and advance the watermark.
+        if (documents.length === 0) {
+          synced += 1;
+          if (digest.id > lastId) {
+            lastId = digest.id;
+            progressedInPage = true;
+            ChromaSyncState.bump(backfillProject, 'digests', digest.id);
+          }
+          continue;
+        }
+
+        let written = 0;
+        let threw = false;
+        try {
+          written = await this.addDocuments(documents);
+        } catch (error) {
+          threw = true;
+          logger.error(
+            'CHROMA_SYNC',
+            'Digest backfill threw — watermark frozen at last good id',
+            { project: backfillProject, digestId: digest.id, lastSyncedId: lastId },
+            error instanceof Error ? error : new Error(String(error))
+          );
+        }
+
+        if (threw || written < documents.length) {
+          hadFailure = true;
+          if (!threw) {
+            logger.warn(
+              'CHROMA_SYNC',
+              'Digest backfill partial write — watermark frozen at last good id',
+              {
+                project: backfillProject,
+                digestId: digest.id,
+                lastSyncedId: lastId,
+                requested: documents.length,
+                written,
+              }
+            );
+          }
+          break;
+        }
+
+        synced += 1;
+        if (digest.id > lastId) {
+          lastId = digest.id;
+          progressedInPage = true;
+          ChromaSyncState.bump(backfillProject, 'digests', digest.id);
+        }
+      }
+
+      if (hadFailure) break;
+      if (!progressedInPage) break;
+    }
+
+    if (synced > 0 || hadFailure) {
+      logger.info('CHROMA_SYNC', 'Digest backfill pass complete', {
+        project: backfillProject,
+        synced,
+        lastId,
+        startWatermark: watermark,
+        halted: hadFailure
+      });
+    }
+
+    return { synced, lastId };
   }
 
   private async backfillPrompts(
