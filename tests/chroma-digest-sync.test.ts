@@ -172,6 +172,7 @@ function makeDigestRow(overrides: Partial<ObservationDigestRow> = {}): Observati
   return {
     id: 1,
     project: 'demo',
+    merged_into_project: null,
     period_start_epoch: 1700_000_000_000,
     period_end_epoch: 1700_604_800_000,
     period_kind: 'weekly',
@@ -413,6 +414,7 @@ describe('SessionStore.getLatestDigestForPeriod', () => {
   it('returns the inserted digest row including id and created_at_epoch', () => {
     const inserted = store.insertObservationDigest({
       project: 'demo',
+      merged_into_project: null,
       period_start_epoch: 1700_000_000_000,
       period_end_epoch: 1700_604_800_000,
       period_kind: 'weekly',

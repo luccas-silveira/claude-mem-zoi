@@ -226,6 +226,9 @@ export interface SessionSummaryRow {
 export interface ObservationDigestRow {
   id: number;
   project: string;
+  // Schema v34 — mirrors observations.merged_into_project / session_summaries.merged_into_project
+  // so ObservationCompiler.queryDigests can match (project = ? OR merged_into_project = ?).
+  merged_into_project: string | null;
   period_start_epoch: number;
   period_end_epoch: number;
   period_kind: 'weekly' | 'monthly';

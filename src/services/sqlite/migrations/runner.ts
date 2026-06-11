@@ -35,6 +35,7 @@ export class MigrationRunner {
     this.addObservationsMetadataColumn();
     this.dropDeadPendingMessagesColumns();
     this.addObservationDigestsTable();
+    this.addObservationDigestsMergedIntoProjectColumn();
   }
 
   private initializeSchema(): void {
@@ -1046,5 +1047,36 @@ export class MigrationRunner {
     this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
 
     logger.info('DB', 'observation_digests table created successfully');
+  }
+
+  // Plan F.5 (Schema v34): align observation_digests with observations /
+  // session_summaries by giving it a merged_into_project column. Mirrors the
+  // SessionStore.addObservationDigestsMergedIntoProjectColumn migration so a
+  // database created via either runner reaches the same v34 shape.
+  private addObservationDigestsMergedIntoProjectColumn(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(34) as SchemaVersion | undefined;
+    if (applied) return;
+
+    const tables = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='observation_digests'").all() as TableNameRow[];
+    if (tables.length === 0) {
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(34, new Date().toISOString());
+      return;
+    }
+
+    const cols = this.db.query('PRAGMA table_info(observation_digests)').all() as TableColumnInfo[];
+    const hasColumn = cols.some(c => c.name === 'merged_into_project');
+
+    if (!hasColumn) {
+      this.db.run('ALTER TABLE observation_digests ADD COLUMN merged_into_project TEXT');
+      logger.debug('DB', 'Added merged_into_project column to observation_digests table');
+    }
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_digests_merged_into_project
+        ON observation_digests(merged_into_project)
+        WHERE merged_into_project IS NOT NULL
+    `);
+
+    this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(34, new Date().toISOString());
   }
 }

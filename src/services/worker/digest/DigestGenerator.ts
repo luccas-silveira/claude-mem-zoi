@@ -349,6 +349,9 @@ export class DigestGenerator {
 
     const digest: Omit<ObservationDigestRow, 'id' | 'created_at' | 'created_at_epoch'> = {
       project,
+      // Schema v34: digests inherit the same "merge target" pointer as observations /
+      // session_summaries. Default to null — backfill happens later when a project is merged.
+      merged_into_project: null,
       period_start_epoch: startEpoch,
       period_end_epoch: endEpoch,
       period_kind: periodKind,

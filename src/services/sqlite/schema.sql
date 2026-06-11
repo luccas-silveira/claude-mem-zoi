@@ -127,6 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_summaries_merged_into          ON session_summari
 CREATE TABLE IF NOT EXISTS observation_digests (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
   project              TEXT    NOT NULL,
+  merged_into_project  TEXT,
   period_start_epoch   INTEGER NOT NULL,
   period_end_epoch     INTEGER NOT NULL,
   period_kind          TEXT    NOT NULL CHECK(period_kind IN ('weekly', 'monthly')),
@@ -140,8 +141,13 @@ CREATE TABLE IF NOT EXISTS observation_digests (
   created_at_epoch     INTEGER NOT NULL,
   UNIQUE(project, period_kind, period_start_epoch)
 );
+-- Migration v34 adds merged_into_project: --
+-- ALTER TABLE observation_digests ADD COLUMN merged_into_project TEXT; --
 CREATE INDEX IF NOT EXISTS idx_digests_project_period
   ON observation_digests(project, period_kind, period_start_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_digests_merged_into_project
+  ON observation_digests(merged_into_project)
+  WHERE merged_into_project IS NOT NULL;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- pending_messages: persistent work queue for SDK messages.

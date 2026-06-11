@@ -72,6 +72,7 @@ export class SessionStore {
     this.dropDeadPendingMessagesColumns();
     this.dropWorkerPidColumn();
     this.addObservationDigestsTable();
+    this.addObservationDigestsMergedIntoProjectColumn();
   }
 
   private dropWorkerPidColumn(): void {
@@ -1034,6 +1035,42 @@ export class SessionStore {
     this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
 
     logger.info('DB', 'observation_digests table created successfully');
+  }
+
+  // Plan F.5 (Schema v34): align observation_digests with observations /
+  // session_summaries by giving it a merged_into_project column. Lets
+  // ObservationCompiler.queryDigests honour the same (project = ? OR
+  // merged_into_project = ?) match used by queryObservations / querySummaries.
+  // Pattern copied from addObservationDigestsTable above — PRAGMA table_info
+  // guards the ALTER on legacy DBs, schema_versions guard makes it idempotent.
+  private addObservationDigestsMergedIntoProjectColumn(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(34) as SchemaVersion | undefined;
+    if (applied) return;
+
+    const tables = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='observation_digests'").all() as TableNameRow[];
+    if (tables.length === 0) {
+      // observation_digests is created by version 33 above; if it's missing we
+      // have nothing to alter, so just record the marker so future boots skip
+      // this migration.
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(34, new Date().toISOString());
+      return;
+    }
+
+    const cols = this.db.query('PRAGMA table_info(observation_digests)').all() as TableColumnInfo[];
+    const hasColumn = cols.some(c => c.name === 'merged_into_project');
+
+    if (!hasColumn) {
+      this.db.run('ALTER TABLE observation_digests ADD COLUMN merged_into_project TEXT');
+      logger.debug('DB', 'Added merged_into_project column to observation_digests table');
+    }
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_digests_merged_into_project
+        ON observation_digests(merged_into_project)
+        WHERE merged_into_project IS NOT NULL
+    `);
+
+    this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(34, new Date().toISOString());
   }
 
   updateMemorySessionId(sessionDbId: number, memorySessionId: string | null): void {

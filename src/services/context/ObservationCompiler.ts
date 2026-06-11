@@ -194,6 +194,7 @@ export function queryDigests(
     SELECT
       id,
       project,
+      merged_into_project,
       period_start_epoch,
       period_end_epoch,
       period_kind,
@@ -206,10 +207,10 @@ export function queryDigests(
       created_at,
       created_at_epoch
     FROM observation_digests
-    WHERE project = ?
+    WHERE (project = ? OR merged_into_project = ?)
     ORDER BY period_start_epoch DESC
     LIMIT ?
-  `).all(project, config.digestCount) as ObservationDigestRow[];
+  `).all(project, project, config.digestCount) as ObservationDigestRow[];
 }
 
 /**
@@ -231,6 +232,7 @@ export function queryDigestsMulti(
     SELECT
       id,
       project,
+      merged_into_project,
       period_start_epoch,
       period_end_epoch,
       period_kind,
@@ -243,10 +245,11 @@ export function queryDigestsMulti(
       created_at,
       created_at_epoch
     FROM observation_digests
-    WHERE project IN (${projectPlaceholders})
+    WHERE (project IN (${projectPlaceholders})
+           OR merged_into_project IN (${projectPlaceholders}))
     ORDER BY period_start_epoch DESC
     LIMIT ?
-  `).all(...projects, config.digestCount) as ObservationDigestRow[];
+  `).all(...projects, ...projects, config.digestCount) as ObservationDigestRow[];
 }
 
 function cwdToDashed(cwd: string): string {

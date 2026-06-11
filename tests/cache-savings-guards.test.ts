@@ -368,3 +368,17 @@ describe('Fase 5/6 — digest pipeline anti-pattern guards', () => {
     expect(exists('plans/2026-06-10-hierarchical-compression-and-variant-cleanup.md')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// v34 schema — ObservationDigestRow includes merged_into_project so
+// queryDigests can honour the same merge-target pattern as queryObservations.
+// ---------------------------------------------------------------------------
+describe('v34 schema — observation_digests merged_into_project marker', () => {
+  it('ObservationDigestRow in src/services/sqlite/types.ts declares merged_into_project', () => {
+    const src = read('src/services/sqlite/types.ts');
+    // The TS shape must paint merged_into_project as `string | null` to mirror
+    // observations / session_summaries; a regression that removes the column
+    // or weakens the type will fail this assertion.
+    expect(src).toMatch(/merged_into_project\s*:\s*string\s*\|\s*null/);
+  });
+});
