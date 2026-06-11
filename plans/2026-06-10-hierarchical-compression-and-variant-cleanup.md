@@ -383,3 +383,111 @@ test $(sqlite3 ~/.claude-mem/claude-mem.db "SELECT MAX(version) FROM schema_vers
 - Manter feature flag `CLAUDE_MEM_DIGEST_ENABLED` por 2 releases.
 - Update `plans/2026-05-22-prompt-cache-prefilter.md` com link cross-ref quando F entrar em produção.
 - Adicionar SHAs ao final deste arquivo conforme cada fase fecha.
+
+---
+
+## Resultados Finais
+
+Linha de chegada (commit SHA por fase):
+
+- Fase 1 (G — slim variant footers): `c509331f`
+- Fase 2 (F.1 — schema + migration v33): `2e4641ef`
+- Fase 3 (F.2 — DigestGenerator + boot hook): `25382253`
+- Fase 4 (F.3 — context mix obs + digests): `b4228a3c`
+- Fase 5 (F.4 — Chroma indexes digests): `ea3d47a4`
+- Fase 6 (este — guards + Resultados Finais): TBD (commit do orchestrator)
+
+Tamanhos (Fase 1):
+- `plugin/modes/code--*.json` total: 94,899 → 70,110 bytes (−26.1%)
+
+Schema (Fase 2):
+- Nova tabela: `observation_digests` (13 cols, UNIQUE(project, period_kind, period_start_epoch))
+- Index `idx_digests_project_period`
+- Schema version bumpou para `33`
+- Settings novas: `CLAUDE_MEM_DIGEST_ENABLED`, `_MIN_AGE_DAYS`, `_PERIOD`, `_MAX_OBS_PER` (default OFF)
+
+Digest job (Fase 3):
+- `DigestGenerator` em `src/services/worker/digest/`
+- Boot hook fire-and-forget com 30s grace period abort-aware
+- Limites: `MAX_DIGESTS_PER_RUN=50`, `RUN_TIME_BUDGET_MS=60_000`
+- Sequencial (concurrency=1)
+- `DeepSeekProvider.compressDigest` single-shot
+- Duck-type guard p/ outros providers (debug log)
+
+Validação real (run de 2026-06-11 00:16-00:34):
+- 4 projetos elegíveis (`AgentStudio`, `cadastro+fofa_nick`, `cadastronick`, `claude_mem+ollama`)
+- Run 1 (00:16:27 → 00:17:33, ~66s): **6 digests gerados**, comprimindo **422 observations** (100+100+100+35+4+83), stop reason `Run time budget exceeded mid-project` em `claude_mem+ollama` — design correto
+- Run 2 (00:34:24 → 00:34:34, ~10s): **1 digest adicional** (`claude_mem+ollama week of 2026-05-11`, 14 obs) — confirma idempotência via UNIQUE constraint (não reprocessou os 6 já feitos)
+- Total: **7 digests** comprimindo **436 observations** em summaries de 922-1587 chars (média ~1306)
+- Custo DeepSeek não-isolável no log (digest e session generators logam pelo mesmo `[SDK]` channel); janela 00:16:27-00:17:33 mostra 9 calls totalizando ~$0.0113 mas inclui tráfego concorrente de session generators rodando em paralelo
+- Falhas: 0
+
+Context injection (Fase 4):
+- Nova setting: `CLAUDE_MEM_CONTEXT_DIGESTS='5'` (default 5 digests/sessão)
+- Ordem: Header → Digests → Timeline → Previously → Footer
+- `MAX_DIGEST_PREVIEW_CHARS=200` com strip de markdown trailing
+- Empty state guard requer observations + summaries + digests todos vazios
+
+Chroma sync (Fase 5):
+- `ChromaSync.syncDigest` indexa digest após insert no SQLite
+- ID format: `digest_{id}_summary`, `digest_{id}_facts` (convenção `entity_{id}_field`)
+- `deduplicateQueryResults` extendido com `digest_(\d+)_` → entity `observation_digest`
+- Best-effort: Chroma down NÃO aborta digest run
+
+Novos arquivos (consolidado):
+- `src/services/worker/digest/DigestGenerator.ts` (Fase 3)
+- `src/services/worker/digest/periods.ts` (Fase 3)
+- `src/services/context/formatters/DigestFormatter.ts` (Fase 4)
+- `tests/observation-digests-schema.test.ts` (Fase 2)
+- `tests/digest-periods.test.ts` (Fase 3)
+- `tests/digest-generator.test.ts` (Fase 3)
+- `tests/context-digests-injection.test.ts` (Fase 4)
+- `tests/chroma-digest-sync.test.ts` (Fase 5)
+
+Cobertura de testes (Fase 6 capstone):
+- 18 testes em `digest-periods.test.ts`
+- 10 testes em `digest-generator.test.ts`
+- 11 testes em `observation-digests-schema.test.ts`
+- 22 testes em `context-digests-injection.test.ts`
+- 12 testes em `chroma-digest-sync.test.ts`
+- 33 testes em `cache-savings-guards.test.ts` (26 anteriores + 7 markers Fase 5/6)
+
+Branches stacked (6):
+
+```
+feat/slim-language-variant-footers    (Fase 1 — G)
+feat/observation-digests-schema       (Fase 2 — F.1)
+feat/digest-generator                 (Fase 3 — F.2)
+feat/context-mix-digests              (Fase 4 — F.3)
+feat/chroma-sync-digests              (Fase 5 — F.4)
+feat/digest-final-verification        (Fase 6 — este)
+```
+
+Como ativar:
+
+```bash
+# settings.json
+"CLAUDE_MEM_DIGEST_ENABLED": "true"
+# Próximo restart do worker dispara job 30s após boot
+```
+
+Como inspecionar:
+
+```bash
+sqlite3 ~/.claude-mem/claude-mem.db \
+  "SELECT project, period_kind, datetime(period_start_epoch/1000, 'unixepoch'), obs_count, length(summary_text) FROM observation_digests ORDER BY id DESC LIMIT 20"
+```
+
+Gaps conhecidos (deferred):
+- `observation_digests` sem coluna `merged_into_project` — projetos merged não cross-fertilizam digests (precisa migration v34)
+- `ChromaSync.runBackfillPipeline` não cobre digests — worker que morre entre INSERT e syncDigest deixa digest fora do Chroma até próxima geração do mesmo período
+- Outros providers (Claude, Gemini, Ollama, OpenRouter) sem `compressDigest` — `DigestGenerator` log debug e early-returns
+- Variantes de idioma usaram English fallback p/ sentenças 1-4 em `bn`/`th`/`ur`
+- Custo de digest não-isolável nos logs `[SDK]` atuais (compartilha channel com session generators); adicionar tag `[DIGEST_SDK]` ou campo `kind=digest` no log seria útil pra observability futura
+
+Próximos passos opcionais (fora do escopo do plano):
+- Schema v34 com `merged_into_project` em `observation_digests`
+- Backfill watermark p/ digests no Chroma
+- `compressDigest` em outros providers
+- Token-budgeted injection em vez de count-based em `ContextBuilder`
+- Investigar root cause do wedge recorrente durante `build-and-sync`

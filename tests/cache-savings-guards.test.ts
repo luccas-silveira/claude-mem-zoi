@@ -311,3 +311,60 @@ describe('Anti-pattern — SYSTEM_PROMPT_DYNAMIC_BOUNDARY confined to ClaudeProv
     expect(offenders).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fase 5/6 capstone — observation_digests pipeline end-to-end markers.
+//
+// These guard the full hierarchical-compression stack (plan
+// `plans/2026-06-10-hierarchical-compression-and-variant-cleanup.md`) that
+// landed across SHAs c509331f → ea3d47a4 and was capstoned in this fase. The
+// existing "Plan F.4 (Fase 5)" describe block above already covers a couple
+// of these markers with permissive regexes; the assertions here pin the
+// stricter byte-level shape (async signature, private formatter helper,
+// digest dedupe regex, 30s abort-aware grace period, plan file presence)
+// so a refactor that subtly drops one of those pieces still fails the build.
+// ---------------------------------------------------------------------------
+describe('Fase 5/6 — digest pipeline anti-pattern guards', () => {
+  it('ChromaSync.syncDigest is declared as an async method', () => {
+    const src = read('src/services/sync/ChromaSync.ts');
+    expect(src).toMatch(/async\s+syncDigest\s*\(/);
+  });
+
+  it('ChromaSync exposes a private formatDigestDocs helper', () => {
+    const src = read('src/services/sync/ChromaSync.ts');
+    expect(src).toMatch(/private\s+formatDigestDocs\s*\(/);
+  });
+
+  it('ChromaSync.deduplicateQueryResults recognises the digest_ id prefix', () => {
+    // Two collaborating signals: the digestMatch variable name and the
+    // explicit entity-type string the dedupe loop maps it to. Keeping both
+    // anchored here means a future refactor can't silently drop digest
+    // dedupe (which would re-introduce summary + facts dupes per result set).
+    const src = read('src/services/sync/ChromaSync.ts');
+    expect(src).toContain('digestMatch');
+    expect(src).toContain("'observation_digest'");
+  });
+
+  it('DigestGenerator wires the post-INSERT syncDigest call', () => {
+    const gen = read('src/services/worker/digest/DigestGenerator.ts');
+    expect(gen).toContain('syncDigest');
+  });
+
+  it('SessionStore exports getLatestDigestForPeriod with a call signature', () => {
+    const ss = read('src/services/sqlite/SessionStore.ts');
+    expect(ss).toMatch(/getLatestDigestForPeriod\s*\(/);
+  });
+
+  it('worker-service runDigestGenerationSafely has 30s abort-aware grace period', () => {
+    // The grace period gives the worker time to come up (avoids stampeding
+    // the LLM on cold boot) but MUST tear down cleanly on shutdown — without
+    // the abort listener the worker hangs on SIGTERM during the grace window.
+    const ws = read('src/services/worker-service.ts');
+    expect(ws).toContain('30_000');
+    expect(ws).toMatch(/signal\.addEventListener\(\s*['"]abort['"]/);
+  });
+
+  it('plan file for hierarchical compression + variant cleanup exists', () => {
+    expect(exists('plans/2026-06-10-hierarchical-compression-and-variant-cleanup.md')).toBe(true);
+  });
+});
