@@ -2777,6 +2777,30 @@ export class SessionStore {
   }
 
   /**
+   * Plan F.4 (Fase 5): Fetch the digest row for a (project, period_kind,
+   * period_start_epoch) tuple after `insertObservationDigest` reports success,
+   * so we can hand a fully-populated `ObservationDigestRow` (with `id` and
+   * `created_at*`) to `ChromaSync.syncDigest`.
+   *
+   * Returns null if no digest exists for that period — defensive only; the
+   * caller has just inserted one, but a concurrent vacuum/delete could race.
+   */
+  getLatestDigestForPeriod(
+    project: string,
+    periodKind: 'weekly' | 'monthly',
+    periodStartEpoch: number,
+  ): ObservationDigestRow | null {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM observation_digests
+      WHERE project = ? AND period_kind = ? AND period_start_epoch = ?
+      LIMIT 1
+    `);
+    const row = stmt.get(project, periodKind, periodStartEpoch) as ObservationDigestRow | undefined;
+    return row ?? null;
+  }
+
+  /**
    * Plan F.2 (Fase 3): Find the oldest observation epoch for a project.
    * Returns null if the project has no observations.
    */

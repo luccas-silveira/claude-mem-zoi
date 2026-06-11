@@ -168,6 +168,35 @@ describe('Plan F.3 (Fase 4) — context digest injection markers', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Plan F.4 (Fase 5) — observation_digests indexed in Chroma.
+// These markers ensure the digest indexing pipeline (ChromaSync.syncDigest +
+// SessionStore.getLatestDigestForPeriod) stays wired up so future refactors
+// don't silently un-do the historical-context semantic-search hook.
+// ---------------------------------------------------------------------------
+describe('Plan F.4 (Fase 5) — ChromaSync digest indexing markers', () => {
+  it('ChromaSync exports syncDigest', () => {
+    const src = read('src/services/sync/ChromaSync.ts');
+    expect(src).toMatch(/\bsyncDigest\b\s*\(/);
+  });
+
+  it('SessionStore exports getLatestDigestForPeriod', () => {
+    const src = read('src/services/sqlite/SessionStore.ts');
+    expect(src).toMatch(/\bgetLatestDigestForPeriod\b\s*\(/);
+  });
+
+  it('DigestGenerator wires an optional chromaSync into its options', () => {
+    const src = read('src/services/worker/digest/DigestGenerator.ts');
+    expect(src).toMatch(/chromaSync\?:\s*ChromaSync/);
+    expect(src).toContain('syncDigest');
+  });
+
+  it('worker-service passes chromaSync into DigestGenerator', () => {
+    const src = read('src/services/worker-service.ts');
+    expect(src).toMatch(/chromaSync:\s*this\.dbManager\.getChromaSync\(\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Anti-pattern guards — these are what catch regressions, not the wiring.
 // ---------------------------------------------------------------------------
 describe('Anti-pattern — never attach cache_control to user/assistant turns', () => {

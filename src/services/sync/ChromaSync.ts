@@ -5,6 +5,14 @@ import { ParsedObservation, ParsedSummary } from '../../sdk/parser.js';
 import { SessionStore } from '../sqlite/SessionStore.js';
 import { logger } from '../../utils/logger.js';
 import { parseFileList } from '../sqlite/observations/files.js';
+import type { ObservationDigestRow } from '../sqlite/types.js';
+
+// Plan F.4 (Fase 5): digest doc chunking cap. Chroma's embedding backend tops
+// out somewhere in the 8k-token range; pick a conservative char budget so the
+// `summary_text` + concatenated `facts` are split cleanly into a `_summary`
+// doc and a `_facts` doc when they would otherwise blow past the limit. Stays
+// below the schema-imposed Postgres TEXT max even after JSON escaping.
+const DIGEST_DOC_MAX_CHARS = 8000;
 
 interface ChromaDocument {
   id: string;
@@ -223,6 +231,84 @@ export class ChromaSync {
   }
 
   /**
+   * Plan F.4 (Fase 5): format an `observation_digests` row for Chroma indexing.
+   *
+   * Emits 1-2 documents:
+   *   - `digest_{id}_summary` — the LLM-generated narrative (always present;
+   *     `summary_text` is NOT NULL in schema).
+   *   - `digest_{id}_facts`   — the concatenated facts array (only if non-empty).
+   *
+   * If `summary_text + facts` would exceed DIGEST_DOC_MAX_CHARS in a single
+   * doc, they are emitted as two separate docs with the same id prefix and
+   * distinct `field_type` metadata so the query layer can tell them apart.
+   *
+   * Defensive on `summary_text`: even though the column is NOT NULL we accept
+   * empty/whitespace strings without producing an empty doc — chroma rejects
+   * empty `document` values.
+   */
+  private formatDigestDocs(digest: ObservationDigestRow): ChromaDocument[] {
+    const documents: ChromaDocument[] = [];
+
+    let facts: string[] = [];
+    if (digest.facts) {
+      try {
+        const parsed = JSON.parse(digest.facts);
+        if (Array.isArray(parsed)) {
+          facts = parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+        }
+      } catch {
+        // Legacy/CSV fallback — keep raw string as a single fact.
+        facts = [digest.facts];
+      }
+    }
+
+    const baseMetadata: Record<string, string | number | null> = {
+      sqlite_id: digest.id,
+      doc_type: 'digest',
+      entity_kind: 'digest',
+      project: digest.project,
+      period_kind: digest.period_kind,
+      period_start_epoch: digest.period_start_epoch,
+      period_end_epoch: digest.period_end_epoch,
+      obs_count: digest.obs_count,
+      created_at_epoch: digest.created_at_epoch
+    };
+
+    const summary = (digest.summary_text ?? '').trim();
+    const factsText = facts.join(' · ');
+
+    // Single-doc path: small enough to combine summary + facts.
+    if (summary.length > 0 && factsText.length > 0
+        && summary.length + factsText.length + 3 <= DIGEST_DOC_MAX_CHARS) {
+      documents.push({
+        id: `digest_${digest.id}_summary`,
+        document: `${summary}\n\n${factsText}`,
+        metadata: { ...baseMetadata, field_type: 'digest_summary' }
+      });
+      return documents;
+    }
+
+    // Split path: summary doc + (optional) facts doc.
+    if (summary.length > 0) {
+      documents.push({
+        id: `digest_${digest.id}_summary`,
+        document: summary.slice(0, DIGEST_DOC_MAX_CHARS),
+        metadata: { ...baseMetadata, field_type: 'digest_summary' }
+      });
+    }
+
+    if (factsText.length > 0) {
+      documents.push({
+        id: `digest_${digest.id}_facts`,
+        document: factsText.slice(0, DIGEST_DOC_MAX_CHARS),
+        metadata: { ...baseMetadata, field_type: 'digest_facts' }
+      });
+    }
+
+    return documents;
+  }
+
+  /**
    * Write `documents` to Chroma in BATCH_SIZE-sized batches.
    *
    * Returns the number of documents that were successfully written (or
@@ -400,6 +486,39 @@ export class ChromaSync {
       logger.warn('CHROMA_SYNC', 'Summary watermark bump skipped — partial write', {
         summaryId,
         project,
+        requested: documents.length,
+        written
+      });
+    }
+  }
+
+  /**
+   * Plan F.4 (Fase 5): index a freshly-inserted observation_digests row in
+   * Chroma. Mirrors `syncObservation` error semantics — `addDocuments()`
+   * tolerates per-batch failures, and `ensureCollectionExists()` may still
+   * throw on connection loss. The caller (DigestGenerator) wraps this in
+   * try/catch so a Chroma outage never aborts the digest run.
+   *
+   * No watermark bump: the digest watermark category does not exist in
+   * ChromaSyncState. Best-effort indexing on each insert — backfill is owned
+   * by the digest generator's own idempotency (UNIQUE constraint on
+   * `(project, period_kind, period_start_epoch)`).
+   */
+  async syncDigest(digest: ObservationDigestRow): Promise<void> {
+    const documents = this.formatDigestDocs(digest);
+
+    logger.info('CHROMA_SYNC', 'Syncing digest', {
+      digestId: digest.id,
+      documentCount: documents.length,
+      project: digest.project,
+      periodKind: digest.period_kind
+    });
+
+    const written = await this.addDocuments(documents);
+    if (written < documents.length) {
+      logger.warn('CHROMA_SYNC', 'Digest sync partial write — Chroma index may be missing docs', {
+        digestId: digest.id,
+        project: digest.project,
         requested: documents.length,
         written
       });
@@ -908,6 +1027,7 @@ export class ChromaSync {
       const obsMatch = docId.match(/obs_(\d+)_/);
       const summaryMatch = docId.match(/summary_(\d+)_/);
       const promptMatch = docId.match(/prompt_(\d+)/);
+      const digestMatch = docId.match(/digest_(\d+)_/);
 
       let sqliteId: number | null = null;
       let entityType: string | null = null;
@@ -920,6 +1040,9 @@ export class ChromaSync {
       } else if (promptMatch) {
         sqliteId = parseInt(promptMatch[1], 10);
         entityType = 'user_prompt';
+      } else if (digestMatch) {
+        sqliteId = parseInt(digestMatch[1], 10);
+        entityType = 'observation_digest';
       }
 
       if (sqliteId !== null && entityType) {

@@ -462,11 +462,16 @@ export class WorkerService implements WorkerRef {
       }
 
       const { DigestGenerator } = await import('./worker/digest/DigestGenerator.js');
+      // Plan F.4 (Fase 5): pass ChromaSync so newly-inserted digests get
+      // indexed for semantic search. Optional — if Chroma was disabled at
+      // boot (`CLAUDE_MEM_CHROMA_ENABLED=false`) the digest still lands in
+      // SQLite, it just isn't searchable.
       const generator = new DigestGenerator({
         store: this.dbManager.getSessionStore(),
         provider: this.getActiveAgent(),
         settings,
         logger,
+        chromaSync: this.dbManager.getChromaSync() ?? undefined,
       });
 
       const result = await generator.generateMissingDigests(signal);

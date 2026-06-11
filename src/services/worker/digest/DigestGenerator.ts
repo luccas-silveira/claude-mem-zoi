@@ -20,6 +20,7 @@ import type { SessionStore } from '../../sqlite/SessionStore.js';
 import type { SettingsDefaults } from '../../../shared/SettingsDefaultsManager.js';
 import type { logger as LoggerNS } from '../../../utils/logger.js';
 import type { ObservationRow, ObservationDigestRow } from '../../sqlite/types.js';
+import type { ChromaSync } from '../../sync/ChromaSync.js';
 import { buildDigestPrompt } from '../../../sdk/prompts.js';
 import { parseDigest } from '../../../sdk/parser.js';
 import { listMissingPeriods, type PeriodKind } from './periods.js';
@@ -40,6 +41,14 @@ export interface DigestGeneratorOptions {
   provider: Partial<DigestProvider> | unknown;
   settings: SettingsDefaults;
   logger: typeof LoggerNS;
+  /**
+   * Plan F.4 (Fase 5): optional Chroma indexer. When supplied, every digest
+   * we successfully INSERT into SQLite is also indexed in Chroma for semantic
+   * search. Best-effort — Chroma failures are caught here and never abort the
+   * digest run. When omitted (Chroma disabled at boot), digests still land in
+   * SQLite, they just aren't queryable via `mem-search`.
+   */
+  chromaSync?: ChromaSync;
 }
 
 export interface DigestRunResult {
@@ -369,6 +378,29 @@ export class DigestGenerator {
         obsCount: obs.length,
         summaryChars: parsed.summary_text.length,
       });
+
+      // Plan F.4 (Fase 5): index the digest in Chroma so it shows up in
+      // semantic search. SQLite is the source of truth and was already
+      // updated above — Chroma is a derived index. A failure here MUST NOT
+      // abort the run or roll back the SQLite insert; we log warn and move
+      // on, mirroring the existing "Chroma is best-effort" policy used by
+      // ResponseProcessor.
+      if (this.opts.chromaSync) {
+        try {
+          const row = this.opts.store.getLatestDigestForPeriod(project, periodKind, startEpoch);
+          if (row) {
+            await this.opts.chromaSync.syncDigest(row);
+          } else {
+            logger.warn('DIGEST', 'Inserted digest not found on re-fetch — skipping Chroma sync', {
+              project,
+              label,
+            });
+          }
+        } catch (err) {
+          logger.warn('DIGEST', 'Chroma sync failed (digest still in SQLite)', { project, label },
+            err instanceof Error ? err : new Error(String(err)));
+        }
+      }
     } else {
       // Race: another worker (or earlier iteration) inserted concurrently.
       result.skipped += 1;
