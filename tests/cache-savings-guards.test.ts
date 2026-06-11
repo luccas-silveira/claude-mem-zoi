@@ -434,3 +434,18 @@ describe('multi-provider compressDigest', () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// cost log isolation — DeepSeek usage logs tag session vs digest calls.
+// ---------------------------------------------------------------------------
+describe('cost log isolation — DeepSeek session vs digest', () => {
+  it("DeepSeekProvider tags session usage with kind: 'session'", () => {
+    const src = read('src/services/worker/DeepSeekProvider.ts');
+    expect(src).toContain("kind: 'session'");
+  });
+
+  it("DeepSeekProvider tags digest usage with kind: 'digest'", () => {
+    const src = read('src/services/worker/DeepSeekProvider.ts');
+    expect(src).toContain("kind: 'digest'");
+  });
+});

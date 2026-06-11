@@ -25,7 +25,7 @@
  * the `sqlite3` CLI so we don't add a new better-sqlite3 dependency.
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -253,6 +253,81 @@ function printPhaseMarkers(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Section 3.5 — DeepSeek cost split (session vs digest)
+//
+// Parses log lines emitted by DeepSeekProvider.queryDeepSeekMultiTurn and
+// DeepSeekProvider.compressDigest. Both write a `DeepSeek API usage` line
+// containing a `kind` field. Legacy logs without `kind` default to 'session'
+// so historical data still rolls up sensibly. Pure parser — exported so the
+// test suite can pin the regex without spawning the script.
+// ---------------------------------------------------------------------------
+export interface DeepSeekUsageEntry {
+  kind: 'session' | 'digest';
+  estimatedCostUSD: number;
+}
+
+export function parseDeepSeekUsageLine(line: string): DeepSeekUsageEntry | null {
+  // Log shape (logger.ts → log()):
+  //   [...] [INFO ] [SDK   ] DeepSeek API usage {kind=session, model=..., estimatedCostUSD=0.0042, ...}
+  // The Logger writes context objects as `{k1=v1, k2=v2, ...}` at INFO level
+  // and as pretty-printed JSON at DEBUG. We accept both — `kind=session` /
+  // `"kind":"session"` and `estimatedCostUSD=0.0042` / `"estimatedCostUSD":"0.0042"`.
+  if (!line.includes('DeepSeek API usage')) return null;
+  const kindMatch = line.match(/(?:"kind"\s*:\s*"|kind=)(session|digest)\b/);
+  const costMatch = line.match(/(?:"estimatedCostUSD"\s*:\s*"|estimatedCostUSD=)([0-9.]+)/);
+  if (!costMatch) return null;
+  const cost = Number(costMatch[1]);
+  if (!Number.isFinite(cost)) return null;
+  const kind = (kindMatch?.[1] as 'session' | 'digest' | undefined) ?? 'session';
+  return { kind, estimatedCostUSD: cost };
+}
+
+function printDeepSeekCostSplit(): void {
+  header('DeepSeek cost split (session vs digest)');
+  const logsDir = join(DATA_DIR, 'logs');
+  if (!existsSync(logsDir)) {
+    console.log('  (no logs directory)');
+    return;
+  }
+  let logFiles: string[] = [];
+  try {
+    logFiles = readdirSync(logsDir)
+      .filter((f) => f.startsWith('claude-mem-') && f.endsWith('.log'))
+      .map((f) => join(logsDir, f));
+  } catch {
+    console.log('  (failed to list logs directory)');
+    return;
+  }
+  if (logFiles.length === 0) {
+    console.log('  (no log files)');
+    return;
+  }
+  let sessionCalls = 0;
+  let sessionCost = 0;
+  let digestCalls = 0;
+  let digestCost = 0;
+  for (const file of logFiles) {
+    let content = '';
+    try { content = readFileSync(file, 'utf8'); } catch { continue; }
+    for (const line of content.split('\n')) {
+      const entry = parseDeepSeekUsageLine(line);
+      if (!entry) continue;
+      if (entry.kind === 'digest') {
+        digestCalls += 1;
+        digestCost += entry.estimatedCostUSD;
+      } else {
+        sessionCalls += 1;
+        sessionCost += entry.estimatedCostUSD;
+      }
+    }
+  }
+  console.log(
+    `  DeepSeek calls — sessions: ${sessionCalls} calls, $${sessionCost.toFixed(4)}. ` +
+    `digests: ${digestCalls} calls, $${digestCost.toFixed(4)}.`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Section 4 — Useful numbers
 // ---------------------------------------------------------------------------
 function printNumbers(): void {
@@ -274,6 +349,7 @@ async function main(): Promise<void> {
     console.log(`(DB not found at ${DB_PATH}; skipping session table)`);
     printModeSizes();
     printPhaseMarkers();
+    printDeepSeekCostSplit();
     printNumbers();
     return;
   }
@@ -288,10 +364,16 @@ async function main(): Promise<void> {
 
   printModeSizes();
   printPhaseMarkers();
+  printDeepSeekCostSplit();
   printNumbers();
 }
 
-main().catch((err: unknown) => {
-  console.error('inspect-cache-savings failed:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Only auto-run when executed as a script (not when imported by the test suite
+// for `parseDeepSeekUsageLine`). Bun sets `import.meta.main` on the entrypoint;
+// the same check works under tsx/Node too since imports never set that flag.
+if ((import.meta as { main?: boolean }).main) {
+  main().catch((err: unknown) => {
+    console.error('inspect-cache-savings failed:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
