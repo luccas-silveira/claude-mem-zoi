@@ -3,15 +3,21 @@ import { join } from 'path';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { logger } from '../../utils/logger.js';
 
-type DocKind = 'observations' | 'summaries' | 'prompts';
+type DocKind = 'observations' | 'summaries' | 'prompts' | 'digests';
 
 export interface ProjectWatermarks {
   observations: number;
   summaries: number;
   prompts: number;
+  // Plan F.4+ extension: digest backfill watermark. Tracks the last
+  // observation_digests.id that was successfully indexed in Chroma for this
+  // project. Closes the gap where a worker crashes between SQLite INSERT and
+  // ChromaSync.syncDigest (best-effort, no SQLite watermark on the digest
+  // path) — runBackfillPipeline re-indexes anything past this id on next boot.
+  digests: number;
 }
 
-const ZERO: ProjectWatermarks = { observations: 0, summaries: 0, prompts: 0 };
+const ZERO: ProjectWatermarks = { observations: 0, summaries: 0, prompts: 0, digests: 0 };
 
 function statePath(): string {
   const dataDir = SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR');
@@ -35,7 +41,11 @@ function load(): Record<string, ProjectWatermarks> {
     normalized[project] = {
       observations: Number.isInteger(marks.observations) ? marks.observations as number : 0,
       summaries: Number.isInteger(marks.summaries) ? marks.summaries as number : 0,
-      prompts: Number.isInteger(marks.prompts) ? marks.prompts as number : 0
+      prompts: Number.isInteger(marks.prompts) ? marks.prompts as number : 0,
+      // Defensive default: state files written before the digests field was
+      // added simply restart digest backfill from id=0, which is idempotent
+      // because Chroma add+delete reconciles on duplicate ids.
+      digests: Number.isInteger(marks.digests) ? marks.digests as number : 0
     };
   }
   cache = normalized;
