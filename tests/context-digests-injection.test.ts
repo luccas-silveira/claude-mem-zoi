@@ -206,7 +206,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
     const rows: ObservationDigestRow[] = [
       // Caller passes DESC by period_start_epoch (matches queryDigests output)
       {
-        id: 3, project: 'demo',
+        id: 3, project: 'demo', merged_into_project: null,
         period_start_epoch: UTC_2026_05_18, period_end_epoch: UTC_2026_05_18 + WEEK_MS,
         period_kind: 'weekly', obs_count: 30,
         dominant_types: null, dominant_concepts: null,
@@ -215,7 +215,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
         created_at: 'x', created_at_epoch: UTC_2026_05_18,
       },
       {
-        id: 2, project: 'demo',
+        id: 2, project: 'demo', merged_into_project: null,
         period_start_epoch: UTC_2026_05_11, period_end_epoch: UTC_2026_05_11 + WEEK_MS,
         period_kind: 'weekly', obs_count: 20,
         dominant_types: null, dominant_concepts: null,
@@ -224,7 +224,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
         created_at: 'x', created_at_epoch: UTC_2026_05_11,
       },
       {
-        id: 1, project: 'demo',
+        id: 1, project: 'demo', merged_into_project: null,
         period_start_epoch: UTC_2026_05_04, period_end_epoch: UTC_2026_05_04 + WEEK_MS,
         period_kind: 'weekly', obs_count: 10,
         dominant_types: null, dominant_concepts: null,
@@ -248,7 +248,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
   it('truncates summary_text longer than MAX_DIGEST_PREVIEW_CHARS', () => {
     const longText = 'A'.repeat(MAX_DIGEST_PREVIEW_CHARS + 500);
     const rows: ObservationDigestRow[] = [{
-      id: 1, project: 'demo',
+      id: 1, project: 'demo', merged_into_project: null,
       period_start_epoch: UTC_2026_05_04, period_end_epoch: UTC_2026_05_04 + WEEK_MS,
       period_kind: 'weekly', obs_count: 5,
       dominant_types: null, dominant_concepts: null,
@@ -267,7 +267,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
 
   it('defensively handles empty summary_text (no crash, no colon-prefix)', () => {
     const rows: ObservationDigestRow[] = [{
-      id: 1, project: 'demo',
+      id: 1, project: 'demo', merged_into_project: null,
       period_start_epoch: UTC_2026_05_04, period_end_epoch: UTC_2026_05_04 + WEEK_MS,
       period_kind: 'weekly', obs_count: 5,
       dominant_types: null, dominant_concepts: null,
@@ -284,7 +284,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
 
   it('defensively handles null JSON arrays (dominant_types / facts / files_touched)', () => {
     const rows: ObservationDigestRow[] = [{
-      id: 1, project: 'demo',
+      id: 1, project: 'demo', merged_into_project: null,
       period_start_epoch: UTC_2026_05_04, period_end_epoch: UTC_2026_05_04 + WEEK_MS,
       period_kind: 'weekly', obs_count: 5,
       dominant_types: null, dominant_concepts: null,
@@ -300,7 +300,7 @@ describe('renderDigests (Plan F.3 / Fase 4)', () => {
   it('header uses period_kind label when all rows agree', () => {
     const rows: ObservationDigestRow[] = [
       {
-        id: 1, project: 'demo',
+        id: 1, project: 'demo', merged_into_project: null,
         period_start_epoch: UTC_2026_05_04, period_end_epoch: UTC_2026_05_04 + 30 * 86_400_000,
         period_kind: 'monthly', obs_count: 100,
         dominant_types: null, dominant_concepts: null,

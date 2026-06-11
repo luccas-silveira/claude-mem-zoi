@@ -35,7 +35,7 @@ describe('observation_digests schema (Plan F.1 / Fase 2)', () => {
     db.close();
   });
 
-  it('migration creates the observation_digests table with all 13 columns', () => {
+  it('migration creates the observation_digests table with all 14 columns', () => {
     const cols = db.query('PRAGMA table_info(observation_digests)').all() as ColumnInfo[];
     const names = cols.map(c => c.name).sort();
 
@@ -43,6 +43,9 @@ describe('observation_digests schema (Plan F.1 / Fase 2)', () => {
       [
         'id',
         'project',
+        // Schema v34 — paired with observations.merged_into_project /
+        // session_summaries.merged_into_project.
+        'merged_into_project',
         'period_start_epoch',
         'period_end_epoch',
         'period_kind',
@@ -57,7 +60,7 @@ describe('observation_digests schema (Plan F.1 / Fase 2)', () => {
       ].sort()
     );
 
-    expect(cols.length).toBe(13);
+    expect(cols.length).toBe(14);
   });
 
   it('UNIQUE(project, period_kind, period_start_epoch) blocks duplicate inserts', () => {
