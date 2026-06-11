@@ -128,6 +128,11 @@ export function ingestObservation(payload: ObservationPayload): IngestResult {
   if (settings.CLAUDE_MEM_PREFILTER_ENABLED === 'true') {
     const decision = decidePrefilter(payload, sessionReadCache, settings);
     if (decision.skip) {
+      logger.debug('PREFILTER', `skipped ${payload.toolName}`, {
+        reason: decision.reason,
+        toolName: payload.toolName,
+        contentSessionId: payload.contentSessionId,
+      });
       return { ok: true, status: 'skipped', reason: decision.reason };
     }
     updateReadCache(payload, sessionReadCache);

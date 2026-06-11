@@ -130,6 +130,11 @@ interface DeepSeekResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    // DeepSeek context-cache hit accounting. Present when the request's
+    // stable prefix matched the upstream cache. Cache hit tokens are billed
+    // at ~10% of the miss rate.
+    prompt_cache_hit_tokens?: number;
+    prompt_cache_miss_tokens?: number;
   };
   error?: {
     message?: string;
@@ -520,14 +525,20 @@ export class DeepSeekProvider {
     if (tokensUsed) {
       const inputTokens = data.usage?.prompt_tokens || 0;
       const outputTokens = data.usage?.completion_tokens || 0;
+      const cacheHitTokens = data.usage?.prompt_cache_hit_tokens || 0;
+      const cacheMissTokens = data.usage?.prompt_cache_miss_tokens || (inputTokens - cacheHitTokens);
       // DeepSeek pricing (deepseek-v4-flash, USD per 1M tokens, off-peak rates).
-      // Cache-hit input is ~5x cheaper; we approximate using miss rate for safety.
-      const estimatedCost = (inputTokens / 1000000 * 0.27) + (outputTokens / 1000000 * 1.10);
+      // Cache-hit input is billed at ~10% of miss rate.
+      const estimatedCost = (cacheMissTokens / 1_000_000 * 0.27) + (cacheHitTokens / 1_000_000 * 0.027) + (outputTokens / 1_000_000 * 1.10);
+      const cacheHitRate = inputTokens > 0 ? Math.round((cacheHitTokens / inputTokens) * 100) : 0;
 
       logger.info('SDK', 'DeepSeek API usage', {
         model,
         inputTokens,
         outputTokens,
+        cacheHitTokens,
+        cacheMissTokens,
+        cacheHitRate: `${cacheHitRate}%`,
         totalTokens: tokensUsed,
         estimatedCostUSD: estimatedCost.toFixed(4),
         messagesInContext: truncatedHistory.length

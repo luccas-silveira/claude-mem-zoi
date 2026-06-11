@@ -33,6 +33,7 @@ export type Component =
   | 'OPENCLAW'
   | 'OPENCODE'
   | 'PARSER'
+  | 'PREFILTER'
   | 'PROCESS'
   | 'PROJECT_NAME'
   | 'QUEUE'

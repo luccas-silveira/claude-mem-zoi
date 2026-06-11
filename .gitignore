@@ -50,3 +50,4 @@ logs/run_evaluation/
 .docker-blowout-data/
 .scratch/
 docker/install-test/
+graphify-out/
