@@ -1,7 +1,7 @@
 {
   "name": "Code Development (Urdu)",
   "prompts": {
-    "footer": "DO NOT do any work other than emitting OBSERVATIONS from tool use messages. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the observation XML — any other output is discarded. مواد اردو میں لکھیں۔",
+    "footer": "ٹول یوز پیغامات سے OBSERVATIONS بنانے کے علاوہ کوئی اور کام نہ کریں۔ آپ ایک مختلف Claude Code سیشن کا مشاہدہ کر رہے ہیں۔ کبھی اپنے آپ کا حوالہ نہ دیں۔ صرف observation XML خارج کریں — کوئی بھی دوسری آؤٹ پٹ ضائع کر دی جائے گی۔ مواد اردو میں لکھیں۔",
 
     "xml_title_placeholder": "[**title**: بنیادی کام یا موضوع کو بیان کرنے والا مختصر عنوان]",
     "xml_subtitle_placeholder": "[**subtitle**: ایک جملے میں وضاحت (زیادہ سے زیادہ 24 الفاظ)]",
@@ -19,7 +19,7 @@
 
     "continuation_instruction": "IMPORTANT: Continue generating observations from tool use messages using the XML structure below.\n\nLANGUAGE REQUIREMENTS: Please write the observation data in اردو",
 
-    "summary_footer": "DO NOT do any work other than emitting this PROGRESS SUMMARY. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the summary XML — any other output is discarded. تمام مواد (request, investigated, learned, completed, next_steps, notes) اردو میں لکھیں۔"
+    "summary_footer": "اس PROGRESS SUMMARY کو خارج کرنے کے علاوہ کوئی اور کام نہ کریں۔ آپ ایک مختلف Claude Code سیشن کا مشاہدہ کر رہے ہیں۔ کبھی اپنے آپ کا حوالہ نہ دیں۔ صرف summary XML خارج کریں — کوئی بھی دوسری آؤٹ پٹ ضائع کر دی جائے گی۔ تمام مواد (request, investigated, learned, completed, next_steps, notes) اردو میں لکھیں۔"
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "Code Development (Bengali)",
   "prompts": {
-    "footer": "DO NOT do any work other than emitting OBSERVATIONS from tool use messages. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the observation XML — any other output is discarded. বিষয়বস্তু বাংলায় লিখুন।",
+    "footer": "টুল ইউজ মেসেজ থেকে OBSERVATIONS তৈরি করা ছাড়া অন্য কোনো কাজ করবেন না। আপনি একটি ভিন্ন Claude Code সেশন পর্যবেক্ষণ করছেন। কখনোই নিজের উল্লেখ করবেন না। শুধুমাত্র observation XML আউটপুট দিন — অন্য যেকোনো আউটপুট বাতিল করা হবে। বিষয়বস্তু বাংলায় লিখুন।",
 
     "xml_title_placeholder": "[**title**: মূল কাজ বা বিষয় বর্ণনাকারী সংক্ষিপ্ত শিরোনাম]",
     "xml_subtitle_placeholder": "[**subtitle**: এক বাক্যে ব্যাখ্যা (সর্বোচ্চ ২৪ শব্দ)]",
@@ -19,6 +19,6 @@
 
     "continuation_instruction": "IMPORTANT: Continue generating observations from tool use messages using the XML structure below.\n\nLANGUAGE REQUIREMENTS: Please write the observation data in বাংলা",
 
-    "summary_footer": "DO NOT do any work other than emitting this PROGRESS SUMMARY. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the summary XML — any other output is discarded. সমস্ত বিষয়বস্তু (request, investigated, learned, completed, next_steps, notes) বাংলায় লিখুন।"
+    "summary_footer": "এই PROGRESS SUMMARY তৈরি করা ছাড়া অন্য কোনো কাজ করবেন না। আপনি একটি ভিন্ন Claude Code সেশন পর্যবেক্ষণ করছেন। কখনোই নিজের উল্লেখ করবেন না। শুধুমাত্র summary XML আউটপুট দিন — অন্য যেকোনো আউটপুট বাতিল করা হবে। সমস্ত বিষয়বস্তু (request, investigated, learned, completed, next_steps, notes) বাংলায় লিখুন।"
   }
 }
