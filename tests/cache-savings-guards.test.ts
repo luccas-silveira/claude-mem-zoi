@@ -368,3 +368,32 @@ describe('Fase 5/6 — digest pipeline anti-pattern guards', () => {
     expect(exists('plans/2026-06-10-hierarchical-compression-and-variant-cleanup.md')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// multi-provider compressDigest — Fase 3 multi-provider parity markers.
+//
+// Each provider file must declare a `compressDigest` method so the
+// DigestGenerator duck-type guard succeeds regardless of which provider is
+// active. ClaudeProvider's implementation deliberately throws a
+// ClassifiedProviderError with kind='unrecoverable' because the Agent SDK
+// loop has no clean single-shot path; the throw is caught by
+// DigestGenerator.processOnePeriod and demoted to DEBUG via the
+// `isClassified(err) && err.kind === 'unrecoverable'` branch so the worker
+// log isn't spammed once per period when Claude is the active provider.
+// ---------------------------------------------------------------------------
+describe('multi-provider compressDigest', () => {
+  const providers = [
+    'src/services/worker/ClaudeProvider.ts',
+    'src/services/worker/DeepSeekProvider.ts',
+    'src/services/worker/GeminiProvider.ts',
+    'src/services/worker/OllamaProvider.ts',
+    'src/services/worker/OpenRouterProvider.ts',
+  ];
+
+  for (const rel of providers) {
+    it(`${rel.split('/').pop()} declares compressDigest`, () => {
+      const src = read(rel);
+      expect(src).toContain('compressDigest');
+    });
+  }
+});
