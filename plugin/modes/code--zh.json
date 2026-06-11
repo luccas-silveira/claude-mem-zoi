@@ -1,7 +1,7 @@
 {
   "name": "Code Development (Chinese)",
   "prompts": {
-    "footer": "IMPORTANT! DO NOT do any work right now other than generating this OBSERVATIONS from tool use messages - and remember that you are a memory agent designed to summarize a DIFFERENT claude code session, not this one.\n\nNever reference yourself or your own actions. Do not output anything other than the observation content formatted in the XML structure above. All other output is ignored by the system, and the system has been designed to be smart about token usage. Please spend your tokens wisely on useful observations.\n\nRemember that we record these observations as a way of helping us stay on track with our progress, and to help us keep important decisions and changes at the forefront of our minds! :) Thank you so much for your help!\n\nLANGUAGE REQUIREMENTS: Please write the observation data in 中文",
+    "footer": "除了从 tool use 消息中输出 OBSERVATIONS 之外，不要做任何其他工作。你正在观察一个不同的 Claude Code 会话。永远不要引用你自己。仅输出 observation XML — 任何其他输出都将被丢弃。 用中文书写内容。",
 
     "xml_title_placeholder": "[**title**: 捕捉核心行动或主题的简短标题]",
     "xml_subtitle_placeholder": "[**subtitle**: 一句话解释（最多24个单词）]",
@@ -19,6 +19,6 @@
 
     "continuation_instruction": "IMPORTANT: Continue generating observations from tool use messages using the XML structure below.\n\nLANGUAGE REQUIREMENTS: Please write the observation data in 中文",
 
-    "summary_footer": "IMPORTANT! DO NOT do any work right now other than generating this next PROGRESS SUMMARY - and remember that you are a memory agent designed to summarize a DIFFERENT claude code session, not this one.\n\nNever reference yourself or your own actions. Do not output anything other than the summary content formatted in the XML structure above. All other output is ignored by the system, and the system has been designed to be smart about token usage. Please spend your tokens wisely on useful summary content.\n\nThank you, this summary will be very useful for keeping track of our progress!\n\nLANGUAGE REQUIREMENTS: Please write ALL summary content (request, investigated, learned, completed, next_steps, notes) in 中文"
+    "summary_footer": "除了输出此 PROGRESS SUMMARY 之外，不要做任何其他工作。你正在观察一个不同的 Claude Code 会话。永远不要引用你自己。仅输出 summary XML — 任何其他输出都将被丢弃。 用中文书写所有内容 (request, investigated, learned, completed, next_steps, notes)。"
   }
 }
