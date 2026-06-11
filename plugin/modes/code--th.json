@@ -1,7 +1,7 @@
 {
   "name": "Code Development (Thai)",
   "prompts": {
-    "footer": "DO NOT do any work other than emitting OBSERVATIONS from tool use messages. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the observation XML — any other output is discarded. เขียนเนื้อหาเป็นภาษาไทย",
+    "footer": "ห้ามทำงานอื่นใดนอกจากการสร้าง OBSERVATIONS จากข้อความ tool use คุณกำลังสังเกตเซสชัน Claude Code ที่ต่างออกไป ห้ามอ้างถึงตัวเองโดยเด็ดขาด ส่งออกเฉพาะ observation XML เท่านั้น — เอาต์พุตอื่นใดจะถูกทิ้ง เขียนเนื้อหาเป็นภาษาไทย",
 
     "xml_title_placeholder": "[**title**: ชื่อสั้นที่จับประเด็นหลักหรือหัวข้อ]",
     "xml_subtitle_placeholder": "[**subtitle**: คำอธิบายหึ่งประโยค (สูงสุด 24 คำ)]",
@@ -19,6 +19,6 @@
 
     "continuation_instruction": "IMPORTANT: Continue generating observations from tool use messages using the XML structure below.\n\nLANGUAGE REQUIREMENTS: Please write the observation data in ภาษาไทย",
 
-    "summary_footer": "DO NOT do any work other than emitting this PROGRESS SUMMARY. You observe a DIFFERENT Claude Code session. Never reference yourself. Emit ONLY the summary XML — any other output is discarded. เขียนเนื้อหาทั้งหมด (request, investigated, learned, completed, next_steps, notes) เป็นภาษาไทย"
+    "summary_footer": "ห้ามทำงานอื่นใดนอกจากการสร้าง PROGRESS SUMMARY นี้ คุณกำลังสังเกตเซสชัน Claude Code ที่ต่างออกไป ห้ามอ้างถึงตัวเองโดยเด็ดขาด ส่งออกเฉพาะ summary XML เท่านั้น — เอาต์พุตอื่นใดจะถูกทิ้ง เขียนเนื้อหาทั้งหมด (request, investigated, learned, completed, next_steps, notes) เป็นภาษาไทย"
   }
 }
