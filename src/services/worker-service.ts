@@ -115,6 +115,11 @@ export class WorkerService implements WorkerRef {
   private initializationCompleteFlag: boolean = false;
   private isShuttingDown: boolean = false;
 
+  // Plan F.2 (Fase 3): shared abort controller for fire-and-forget background
+  // jobs (digest generation, etc.). shutdown() aborts this so long-running
+  // tasks bail cleanly instead of competing with teardown.
+  private shutdownAbortController: AbortController = new AbortController();
+
   private dbManager: DatabaseManager;
   private sessionManager: SessionManager;
   public sseBroadcaster: SSEBroadcaster;
@@ -404,9 +409,71 @@ export class WorkerService implements WorkerRef {
         logger.debug('WORKER', 'MCP self-check failed (non-fatal)', { error: err.message });
       });
 
+      // Plan F.2 (Fase 3): hierarchical compression background job.
+      // Hard isolated, fire-and-forget, never throws to this caller. The wrapper
+      // sleeps 30s before kicking off so the worker reaches "ready" first and
+      // user-facing endpoints have no DB lock contention from the digest job.
+      if (settings.CLAUDE_MEM_DIGEST_ENABLED === 'true') {
+        this.runDigestGenerationSafely(settings).catch(err => {
+          logger.warn('SYSTEM', 'Digest generation crashed in background', undefined,
+            err instanceof Error ? err : new Error(String(err)));
+        });
+      }
+
       return;
     } catch (error) {
       logger.error('SYSTEM', 'Background initialization failed', {}, error instanceof Error ? error : undefined);
+    }
+  }
+
+  /**
+   * Plan F.2 (Fase 3): wrapper for the digest generation background job.
+   *
+   * SAFETY:
+   *   - 30s grace period before running so the worker reaches "ready" first
+   *     and user-facing endpoints aren't competing for the DB lock.
+   *   - Honors shutdownAbortController so worker stop cancels in-flight work.
+   *   - The outer try/catch eats EVERY error — fire-and-forget contract.
+   *   - DigestGenerator.generateMissingDigests itself promises never to throw,
+   *     but this wrapper exists as defence in depth.
+   */
+  private async runDigestGenerationSafely(settings: import('../shared/SettingsDefaultsManager.js').SettingsDefaults): Promise<void> {
+    const signal = this.shutdownAbortController.signal;
+    try {
+      // 30s grace period — let the worker fully start, finish backfills, and
+      // settle before we add LLM + DB load.
+      // Abort-aware sleep — shutdown cancels the timer immediately instead of waiting.
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 30_000);
+        const onAbort = () => {
+          clearTimeout(t);
+          reject(new Error('aborted'));
+        };
+        if (signal.aborted) {
+          clearTimeout(t);
+          reject(new Error('aborted'));
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      if (signal.aborted) {
+        logger.info('DIGEST', 'Digest generation skipped (worker shutting down before start)');
+        return;
+      }
+
+      const { DigestGenerator } = await import('./worker/digest/DigestGenerator.js');
+      const generator = new DigestGenerator({
+        store: this.dbManager.getSessionStore(),
+        provider: this.getActiveAgent(),
+        settings,
+        logger,
+      });
+
+      const result = await generator.generateMissingDigests(signal);
+      logger.info('SYSTEM', 'Digest generation finished', result);
+    } catch (err) {
+      logger.warn('SYSTEM', 'Digest generation failed', undefined,
+        err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -738,6 +805,14 @@ export class WorkerService implements WorkerRef {
   }
 
   async shutdown(): Promise<void> {
+    // Plan F.2 (Fase 3): cancel fire-and-forget background jobs first so
+    // their inflight LLM/DB work doesn't race with teardown.
+    try {
+      this.shutdownAbortController.abort();
+    } catch {
+      // ignore — already aborted
+    }
+
     if (this.transcriptWatcher) {
       this.transcriptWatcher.stop();
       this.transcriptWatcher = null;

@@ -326,3 +326,75 @@ ${mode.prompts.continuation_instruction}
 ${mode.prompts.header_memory_continued}`;
 }
 
+/**
+ * Plan F.2 (Fase 3): Stable system prompt for the digest compression LLM call.
+ * Kept as a top-level const so DeepSeek's implicit prefix cache reuses identical
+ * bytes across runs — no template variables.
+ */
+export const DIGEST_SYSTEM_PROMPT = `You compress a batch of past development observations from a single project into one digest.
+
+Your output MUST be a single <digest> XML block with these children:
+  - <summary_text>: 2-3 short paragraphs (a single string). Narrative recap of what happened in the period.
+  - <facts><fact>...</fact></facts>: 3-10 concrete factual statements grounded in the observations.
+  - <dominant_types><type>...</type></dominant_types>: the most common observation types in this batch (e.g. bugfix, feature, refactor, decision, discovery, change).
+  - <dominant_concepts><concept>...</concept></dominant_concepts>: 3-8 recurring concept tags from the observations.
+  - <files_touched><file>...</file></files_touched>: union of meaningful file paths (cap ~15, drop trivial duplicates).
+
+Rules:
+  - Output ONLY the <digest>...</digest> block. No prose, no markdown fences.
+  - Plain text inside elements. No nested XML inside leaf fields.
+  - Do not invent facts not grounded in the observations.
+  - If observations are sparse, keep summary_text short rather than padding.`;
+
+/**
+ * Build a compact, deterministic prompt that asks the LLM to compress a list
+ * of observations from a single project + period into a digest. Uses the same
+ * XML scaffold conventions as buildObservationPrompt / buildSystemPrompt.
+ *
+ * @param obs observation rows in chronological order
+ * @param periodLabel human-readable label e.g. "week of 2026-05-04"
+ * @param project the project slug
+ */
+export function buildDigestPrompt(
+  obs: Array<{
+    type: string | null;
+    title: string | null;
+    subtitle: string | null;
+    narrative: string | null;
+    facts: string | null;
+    concepts: string | null;
+    files_read: string | null;
+    files_modified: string | null;
+    created_at: string | null;
+  }>,
+  periodLabel: string,
+  project: string,
+): string {
+  // Render each observation as a compact bullet so the model sees the whole
+  // period without the original XML noise. We keep raw values when present —
+  // parsing them here would mask malformed data.
+  const lines = obs.map((o, idx) => {
+    const parts: string[] = [];
+    if (o.created_at) parts.push(`date=${o.created_at.split('T')[0]}`);
+    if (o.type) parts.push(`type=${o.type}`);
+    if (o.title) parts.push(`title="${o.title}"`);
+    if (o.subtitle) parts.push(`subtitle="${o.subtitle}"`);
+    if (o.narrative) parts.push(`narrative="${o.narrative}"`);
+    if (o.facts) parts.push(`facts=${o.facts}`);
+    if (o.concepts) parts.push(`concepts=${o.concepts}`);
+    if (o.files_read) parts.push(`files_read=${o.files_read}`);
+    if (o.files_modified) parts.push(`files_modified=${o.files_modified}`);
+    return `<obs idx="${idx + 1}">${parts.join(' | ')}</obs>`;
+  }).join('\n');
+
+  return `<digest_request>
+  <project>${project}</project>
+  <period>${periodLabel}</period>
+  <observation_count>${obs.length}</observation_count>
+  <observations>
+${lines}
+  </observations>
+</digest_request>
+
+Return the compressed digest now as a single <digest>...</digest> XML block following the rules in the system prompt.`;
+}

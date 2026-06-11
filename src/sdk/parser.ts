@@ -238,6 +238,59 @@ function extractField(content: string, fieldName: string): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+/**
+ * Plan F.2 (Fase 3): parsed digest shape returned by parseDigest.
+ * String arrays are guaranteed non-null (empty array when missing).
+ */
+export interface ParsedDigest {
+  summary_text: string;
+  facts: string[];
+  dominant_types: string[];
+  dominant_concepts: string[];
+  files_touched: string[];
+}
+
+/**
+ * Plan F.2 (Fase 3): Parse the <digest>...</digest> XML produced by the
+ * compression LLM. Returns null on any unrecoverable failure (no fenced
+ * block, missing root, missing summary_text). Uses the same extractField /
+ * extractArrayElements helpers as parseObservation — no new XML library.
+ */
+export function parseDigest(raw: string, correlationId?: string | number): ParsedDigest | null {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return null;
+  }
+
+  let text = stripThinkTags(raw);
+  text = stripCodeFences(text);
+
+  const digestMatch = /<digest>([\s\S]*?)<\/digest>/.exec(text);
+  if (!digestMatch) {
+    logger.warn('PARSER', 'Digest XML missing <digest> root', { correlationId });
+    return null;
+  }
+
+  const content = digestMatch[1];
+  const summary_text = extractField(content, 'summary_text');
+  if (!summary_text) {
+    logger.warn('PARSER', 'Digest missing required summary_text', { correlationId });
+    return null;
+  }
+
+  const facts = extractArrayElements(content, 'facts', 'fact');
+  const dominant_types = extractArrayElements(content, 'dominant_types', 'type');
+  const dominant_concepts = extractArrayElements(content, 'dominant_concepts', 'concept');
+  const files_touched = extractArrayElements(content, 'files_touched', 'file');
+
+  return {
+    summary_text,
+    facts,
+    dominant_types,
+    dominant_concepts,
+    files_touched,
+  };
+}
+
 function extractArrayElements(content: string, arrayName: string, elementName: string): string[] {
   const elements: string[] = [];
 

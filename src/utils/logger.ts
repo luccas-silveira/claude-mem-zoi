@@ -23,6 +23,7 @@ export type Component =
   | 'CURSOR'
   | 'DB'
   | 'DEDUP'
+  | 'DIGEST'
   | 'ENV'
   | 'FOLDER_INDEX'
   | 'HOOK'

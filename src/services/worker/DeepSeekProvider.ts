@@ -557,6 +557,95 @@ export class DeepSeekProvider {
     return { content, tokensUsed };
   }
 
+  /**
+   * Plan F.2 (Fase 3): Single-shot non-streaming digest compression call.
+   *
+   * Does NOT touch session state, conversation history, or DB. The DigestGenerator
+   * calls this from the background job. The caller-provided AbortSignal is wired
+   * through to withRetry so worker shutdown cancels in-flight requests.
+   *
+   * Throws on quota/auth/network failure. Caller (DigestGenerator) catches per-period.
+   *
+   * Patterns copied from queryDeepSeekMultiTurn — auth header, endpoint URL,
+   * error parsing via classifyDeepSeekError, withRetry harness.
+   */
+  async compressDigest(prompt: string, signal: AbortSignal): Promise<string> {
+    const { apiKey, model, baseUrl } = this.getDeepSeekConfig();
+    if (!apiKey) {
+      throw new Error('DeepSeek API key not configured. Set CLAUDE_MEM_DEEPSEEK_API_KEY in settings or DEEPSEEK_API_KEY environment variable.');
+    }
+
+    if (signal.aborted) {
+      throw new Error('Digest compression aborted before request');
+    }
+
+    // Lazy import so this module's import graph stays unchanged for non-digest paths.
+    const { DIGEST_SYSTEM_PROMPT } = await import('../../sdk/prompts.js');
+    const endpoint = `${normalizeBaseUrl(baseUrl)}/chat/completions`;
+    let priorRequestId: string | null = null;
+
+    logger.debug('SDK', `Querying DeepSeek single-shot (digest, ${model})`, {
+      promptChars: prompt.length,
+    });
+
+    const data = await withRetry<DeepSeekResponse>(async (attemptSignal) => {
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            ...(priorRequestId ? { 'x-claude-mem-prior-request-id': priorRequestId } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: DIGEST_SYSTEM_PROMPT },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.2,
+            max_tokens: 2048,
+            stream: false,
+            thinking: { type: 'disabled' },
+          }),
+          signal: attemptSignal,
+        });
+      } catch (networkError: unknown) {
+        throw classifyDeepSeekError({ cause: networkError });
+      }
+
+      const requestId = response.headers.get('x-request-id') ?? response.headers.get('x-deepseek-request-id');
+      if (requestId) priorRequestId = requestId;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw classifyDeepSeekError({
+          status: response.status,
+          bodyText: errorText,
+          headers: response.headers,
+          cause: new Error(`DeepSeek API error: ${response.status} - ${errorText}`),
+          ...(requestId ? { requestId } : {}),
+        });
+      }
+
+      const responseData = await response.json() as DeepSeekResponse;
+      if (responseData.error) {
+        throw classifyDeepSeekError({
+          status: response.status,
+          bodyText: `${responseData.error.code} ${responseData.error.message ?? ''}`,
+          headers: response.headers,
+          cause: new Error(`DeepSeek API error: ${responseData.error.code} - ${responseData.error.message}`),
+        });
+      }
+
+      return responseData;
+    }, { label: `DeepSeek digest ${model}`, perAttemptTimeoutMs: 60_000, abortSignal: signal });
+
+    const content = data.choices?.[0]?.message?.content ?? '';
+    return content;
+  }
+
   private getDeepSeekConfig(): { apiKey: string; model: string; baseUrl: string } {
     const settingsPath = USER_SETTINGS_PATH;
     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);

@@ -13,7 +13,7 @@ import {
   LatestPromptResult
 } from '../../types/database.js';
 import type { PendingMessageStore } from './PendingMessageStore.js';
-import type { ObservationSearchResult, SessionSummarySearchResult } from './types.js';
+import type { ObservationSearchResult, SessionSummarySearchResult, ObservationRow, ObservationDigestRow } from './types.js';
 import { computeObservationContentHash } from './observations/store.js';
 import { parseFileList } from './observations/files.js';
 import { DEFAULT_PLATFORM_SOURCE, normalizePlatformSource, sortPlatformSources } from '../../shared/platform-source.js';
@@ -2682,5 +2682,111 @@ export class SessionStore {
     );
 
     return { imported: true, id: result.lastInsertRowid as number };
+  }
+
+  /**
+   * Plan F.2 (Fase 3): List distinct projects that have observations older than
+   * `ageThresholdEpoch`. Used by DigestGenerator to know which projects need
+   * compaction.
+   */
+  listProjectsWithOldObservations(ageThresholdEpoch: number): string[] {
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT project
+      FROM observations
+      WHERE created_at_epoch < ?
+      ORDER BY project ASC
+    `);
+    const rows = stmt.all(ageThresholdEpoch) as Array<{ project: string }>;
+    return rows.map(r => r.project).filter(p => p !== null && p !== undefined);
+  }
+
+  /**
+   * Plan F.2 (Fase 3): Return observations for a project in [start, end). Capped to `maxRows`.
+   * Ordered oldest-first so the digest narrative reads chronologically.
+   */
+  getObservationsForPeriod(
+    project: string,
+    startEpoch: number,
+    endEpoch: number,
+    maxRows: number,
+  ): ObservationRow[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        id, memory_session_id, project, text, type, title, subtitle,
+        facts, narrative, concepts, files_read, files_modified,
+        prompt_number, discovery_tokens, created_at, created_at_epoch
+      FROM observations
+      WHERE project = ?
+        AND created_at_epoch >= ?
+        AND created_at_epoch < ?
+      ORDER BY created_at_epoch ASC
+      LIMIT ?
+    `);
+    return stmt.all(project, startEpoch, endEpoch, maxRows) as ObservationRow[];
+  }
+
+  /**
+   * Plan F.2 (Fase 3): Insert a digest row. Idempotent via the UNIQUE constraint
+   * on (project, period_kind, period_start_epoch) — returns true if inserted,
+   * false if a digest for this period already exists.
+   *
+   * Callers must JSON-encode array fields (dominant_types, dominant_concepts,
+   * facts, files_touched) before passing.
+   */
+  insertObservationDigest(
+    digest: Omit<ObservationDigestRow, 'id' | 'created_at' | 'created_at_epoch'>,
+  ): boolean {
+    const now = new Date();
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO observation_digests (
+        project, period_start_epoch, period_end_epoch, period_kind, obs_count,
+        dominant_types, dominant_concepts, summary_text, facts, files_touched,
+        created_at, created_at_epoch
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      digest.project,
+      digest.period_start_epoch,
+      digest.period_end_epoch,
+      digest.period_kind,
+      digest.obs_count,
+      digest.dominant_types,
+      digest.dominant_concepts,
+      digest.summary_text,
+      digest.facts,
+      digest.files_touched,
+      now.toISOString(),
+      now.getTime(),
+    );
+    return result.changes > 0;
+  }
+
+  /**
+   * Plan F.2 (Fase 3): Return the set of period_start_epoch values already
+   * digested for a project + kind. Used by DigestGenerator to skip existing
+   * periods cheaply (without trying INSERTs that would fail the UNIQUE).
+   */
+  listExistingDigestPeriodStarts(project: string, kind: 'weekly' | 'monthly'): number[] {
+    const stmt = this.db.prepare(`
+      SELECT period_start_epoch
+      FROM observation_digests
+      WHERE project = ? AND period_kind = ?
+    `);
+    const rows = stmt.all(project, kind) as Array<{ period_start_epoch: number }>;
+    return rows.map(r => r.period_start_epoch);
+  }
+
+  /**
+   * Plan F.2 (Fase 3): Find the oldest observation epoch for a project.
+   * Returns null if the project has no observations.
+   */
+  getOldestObservationEpoch(project: string): number | null {
+    const stmt = this.db.prepare(`
+      SELECT MIN(created_at_epoch) AS oldest
+      FROM observations
+      WHERE project = ?
+    `);
+    const row = stmt.get(project) as { oldest: number | null } | undefined;
+    return row?.oldest ?? null;
   }
 }
