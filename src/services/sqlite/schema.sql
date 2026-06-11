@@ -119,6 +119,31 @@ CREATE INDEX IF NOT EXISTS idx_session_summaries_created      ON session_summari
 CREATE INDEX IF NOT EXISTS idx_summaries_merged_into          ON session_summaries(merged_into_project);
 
 -- ─────────────────────────────────────────────────────────────────────
+-- observation_digests: hierarchical compression of older observations.
+-- One row per (project, period_kind, period_start_epoch). Fase 2 (F.1)
+-- of the hierarchical compression plan — schema-only; population happens
+-- in Fase 3 (DigestGenerator).
+-- ─────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS observation_digests (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  project              TEXT    NOT NULL,
+  period_start_epoch   INTEGER NOT NULL,
+  period_end_epoch     INTEGER NOT NULL,
+  period_kind          TEXT    NOT NULL CHECK(period_kind IN ('weekly', 'monthly')),
+  obs_count            INTEGER NOT NULL,
+  dominant_types       TEXT,
+  dominant_concepts    TEXT,
+  summary_text         TEXT    NOT NULL,
+  facts                TEXT,
+  files_touched        TEXT,
+  created_at           TEXT    NOT NULL,
+  created_at_epoch     INTEGER NOT NULL,
+  UNIQUE(project, period_kind, period_start_epoch)
+);
+CREATE INDEX IF NOT EXISTS idx_digests_project_period
+  ON observation_digests(project, period_kind, period_start_epoch DESC);
+
+-- ─────────────────────────────────────────────────────────────────────
 -- pending_messages: persistent work queue for SDK messages.
 -- worker_pid + UNIQUE(content_session_id, tool_use_id) make the claim
 -- query self-healing without any legacy stale-reset epoch column.

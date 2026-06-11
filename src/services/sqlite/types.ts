@@ -211,11 +211,30 @@ export interface SessionSummaryRow {
   learned: string | null;
   completed: string | null;
   next_steps: string | null;
-  files_read: string | null; 
-  files_edited: string | null; 
+  files_read: string | null;
+  files_edited: string | null;
   notes: string | null;
   prompt_number: number | null;
-  discovery_tokens: number; 
+  discovery_tokens: number;
+  created_at: string;
+  created_at_epoch: number;
+}
+
+// Plan F.1 (Fase 2): hierarchical compression of older observations.
+// JSON columns stay as `string | null` in the DB row type — matches
+// ObservationRow.concepts / facts / files_read above.
+export interface ObservationDigestRow {
+  id: number;
+  project: string;
+  period_start_epoch: number;
+  period_end_epoch: number;
+  period_kind: 'weekly' | 'monthly';
+  obs_count: number;
+  dominant_types: string | null;
+  dominant_concepts: string | null;
+  summary_text: string;
+  facts: string | null;
+  files_touched: string | null;
   created_at: string;
   created_at_epoch: number;
 }

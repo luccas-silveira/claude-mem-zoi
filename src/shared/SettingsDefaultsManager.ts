@@ -14,6 +14,10 @@ export interface SettingsDefaults {
   CLAUDE_MEM_PREFILTER_READ_MIN_BYTES: string;
   CLAUDE_MEM_PREFILTER_MAX_TOTAL_CHARS: string;
   CLAUDE_MEM_PREFILTER_DEDUP_READS: string;
+  CLAUDE_MEM_DIGEST_ENABLED: string;
+  CLAUDE_MEM_DIGEST_MIN_AGE_DAYS: string;
+  CLAUDE_MEM_DIGEST_PERIOD: string;
+  CLAUDE_MEM_DIGEST_MAX_OBS_PER: string;
   CLAUDE_MEM_PROVIDER: string;
   CLAUDE_MEM_CLAUDE_AUTH_METHOD: string;  
   CLAUDE_MEM_GEMINI_API_KEY: string;
@@ -91,6 +95,10 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_PREFILTER_READ_MIN_BYTES: '500',
     CLAUDE_MEM_PREFILTER_MAX_TOTAL_CHARS: '50000',
     CLAUDE_MEM_PREFILTER_DEDUP_READS: 'true',
+    CLAUDE_MEM_DIGEST_ENABLED: 'false',           // OFF by default for Fase 2; Fase 4 will flip
+    CLAUDE_MEM_DIGEST_MIN_AGE_DAYS: '30',
+    CLAUDE_MEM_DIGEST_PERIOD: 'weekly',           // 'weekly' | 'monthly'
+    CLAUDE_MEM_DIGEST_MAX_OBS_PER: '100',
     CLAUDE_MEM_PROVIDER: 'claude',  // Default to Claude
     CLAUDE_MEM_CLAUDE_AUTH_METHOD: 'subscription',  // Default to logged-in Claude SDK auth (not API key)
     CLAUDE_MEM_GEMINI_API_KEY: '',  // Empty by default, can be set via UI or env

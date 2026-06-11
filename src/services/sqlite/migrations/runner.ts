@@ -34,6 +34,7 @@ export class MigrationRunner {
     this.addObservationsUniqueContentHashIndex();
     this.addObservationsMetadataColumn();
     this.dropDeadPendingMessagesColumns();
+    this.addObservationDigestsTable();
   }
 
   private initializeSchema(): void {
@@ -1001,5 +1002,49 @@ export class MigrationRunner {
     }
 
     this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(31, new Date().toISOString());
+  }
+
+  // Plan F.1 (Fase 2): hierarchical compression schema.
+  // Pattern copied from createPendingMessagesTable above (runner.ts:400)
+  // — guards on schema_versions + sqlite_master, creates table + index, logs via logger.
+  private addObservationDigestsTable(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(33) as SchemaVersion | undefined;
+    if (applied) return;
+
+    const tables = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='observation_digests'").all() as TableNameRow[];
+    if (tables.length > 0) {
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
+      return;
+    }
+
+    logger.debug('DB', 'Creating observation_digests table');
+
+    this.db.run(`
+      CREATE TABLE observation_digests (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        project              TEXT    NOT NULL,
+        period_start_epoch   INTEGER NOT NULL,
+        period_end_epoch     INTEGER NOT NULL,
+        period_kind          TEXT    NOT NULL CHECK(period_kind IN ('weekly', 'monthly')),
+        obs_count            INTEGER NOT NULL,
+        dominant_types       TEXT,
+        dominant_concepts    TEXT,
+        summary_text         TEXT    NOT NULL,
+        facts                TEXT,
+        files_touched        TEXT,
+        created_at           TEXT    NOT NULL,
+        created_at_epoch     INTEGER NOT NULL,
+        UNIQUE(project, period_kind, period_start_epoch)
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_digests_project_period
+        ON observation_digests(project, period_kind, period_start_epoch DESC)
+    `);
+
+    this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
+
+    logger.info('DB', 'observation_digests table created successfully');
   }
 }
