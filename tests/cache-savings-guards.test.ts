@@ -368,3 +368,24 @@ describe('Fase 5/6 — digest pipeline anti-pattern guards', () => {
     expect(exists('plans/2026-06-10-hierarchical-compression-and-variant-cleanup.md')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// cost log isolation — DeepSeek usage logs must tag session vs digest calls.
+//
+// Both code paths in DeepSeekProvider write `DeepSeek API usage` lines; the
+// `kind` field lets `scripts/inspect-cache-savings.ts` (and any future
+// analytics) split costs between the per-turn agent loop and the background
+// hierarchical-compression job. Without these tags the two roll up into one
+// undifferentiated number, which is exactly the regression this block guards.
+// ---------------------------------------------------------------------------
+describe('cost log isolation — DeepSeek session vs digest', () => {
+  it("DeepSeekProvider tags session usage with kind: 'session'", () => {
+    const src = read('src/services/worker/DeepSeekProvider.ts');
+    expect(src).toContain("kind: 'session'");
+  });
+
+  it("DeepSeekProvider tags digest usage with kind: 'digest'", () => {
+    const src = read('src/services/worker/DeepSeekProvider.ts');
+    expect(src).toContain("kind: 'digest'");
+  });
+});

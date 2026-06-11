@@ -533,6 +533,7 @@ export class DeepSeekProvider {
       const cacheHitRate = inputTokens > 0 ? Math.round((cacheHitTokens / inputTokens) * 100) : 0;
 
       logger.info('SDK', 'DeepSeek API usage', {
+        kind: 'session',
         model,
         inputTokens,
         outputTokens,
@@ -641,6 +642,30 @@ export class DeepSeekProvider {
 
       return responseData;
     }, { label: `DeepSeek digest ${model}`, perAttemptTimeoutMs: 60_000, abortSignal: signal });
+
+    const tokensUsed = data.usage?.total_tokens;
+    if (tokensUsed) {
+      const inputTokens = data.usage?.prompt_tokens || 0;
+      const outputTokens = data.usage?.completion_tokens || 0;
+      const cacheHitTokens = data.usage?.prompt_cache_hit_tokens || 0;
+      const cacheMissTokens = data.usage?.prompt_cache_miss_tokens || (inputTokens - cacheHitTokens);
+      // Same pricing math as queryDeepSeekMultiTurn — keep these formulas in sync
+      // if upstream DeepSeek pricing ever changes.
+      const estimatedCost = (cacheMissTokens / 1_000_000 * 0.27) + (cacheHitTokens / 1_000_000 * 0.027) + (outputTokens / 1_000_000 * 1.10);
+      const cacheHitRate = inputTokens > 0 ? Math.round((cacheHitTokens / inputTokens) * 100) : 0;
+
+      logger.info('SDK', 'DeepSeek API usage', {
+        kind: 'digest',
+        model,
+        inputTokens,
+        outputTokens,
+        cacheHitTokens,
+        cacheMissTokens,
+        cacheHitRate: `${cacheHitRate}%`,
+        totalTokens: tokensUsed,
+        estimatedCostUSD: estimatedCost.toFixed(4),
+      });
+    }
 
     const content = data.choices?.[0]?.message?.content ?? '';
     return content;
